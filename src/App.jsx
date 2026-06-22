@@ -69,12 +69,17 @@ function normalizeStr(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
 }
 
+// URL CENTRAL DO SEU GOOGLE SCRIPT (COLE SEU LINK ENTRE AS ASPAS)
+// Assim como na arquitetura do TABULUM MAIN, fixar este link aqui 
+// garante que qualquer celular que abrir a página Vercel sincronizará automaticamente.
+const SCRIPT_URL = "COLE_O_LINK_DO_SEU_SCRIPT_AQUI";
+
 export default function App() {
   const [emendas, setEmendas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('admin');
-  const [googleScriptUrl, setGoogleScriptUrl] = useState('');
+  const [googleScriptUrl, setGoogleScriptUrl] = useState(() => localStorage.getItem('tabulum_emendas_script_url') || SCRIPT_URL);
   const [mapGeoJson, setMapGeoJson] = useState(null);
   
   // Navegação e Estados de Tela
@@ -100,33 +105,47 @@ export default function App() {
   const temas = useMemo(() => [...new Set(emendas.map(e => e.TEMA).filter(Boolean))].sort(), [emendas]);
   const situacoes = useMemo(() => [...new Set(emendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort(), [emendas]);
 
-  // --- EFEITOS: INICIALIZAÇÃO E MAPA ---
+  // --- EFEITOS: INICIALIZAÇÃO UNIVERSAL (Padrão TABULUM MAIN) ---
   useEffect(() => {
-    // Carrega dados locais (Substitui Firebase)
-    const loadLocalData = () => {
+    const loadData = async () => {
+      // 1. Tenta carregar dados locais para visualização instantânea
       const storedEmendas = localStorage.getItem('tabulum_emendas_data');
       if (storedEmendas) setEmendas(JSON.parse(storedEmendas));
 
-      const storedSettings = localStorage.getItem('tabulum_emendas_settings');
-      if (storedSettings) {
-        const { pass, url } = JSON.parse(storedSettings);
-        if (pass) setAdminPassword(pass);
-        if (url) setGoogleScriptUrl(url);
-      }
-
       const storedAuth = sessionStorage.getItem('tabulum_emendas_auth');
       if (storedAuth === 'true') setIsAdmin(true);
+
+      const storedPass = localStorage.getItem('tabulum_emendas_pass');
+      if (storedPass) setAdminPassword(storedPass);
+
+      // 2. Busca dados atualizados da nuvem silenciosamente (Sincronização Universal)
+      const urlToFetch = googleScriptUrl && googleScriptUrl !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI" 
+        ? googleScriptUrl 
+        : SCRIPT_URL;
+
+      if (urlToFetch && urlToFetch !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI") {
+        try {
+          const response = await fetch(urlToFetch);
+          const newData = await response.json();
+          if (newData && newData.length > 0) {
+            setEmendas(newData);
+            localStorage.setItem('tabulum_emendas_data', JSON.stringify(newData));
+          }
+        } catch (error) {
+          console.error("Erro ao sincronizar com Google Script:", error);
+        }
+      }
+      setLoading(false);
     };
 
-    loadLocalData();
-    setLoading(false);
+    loadData();
 
     // Carregar o GeoJSON de SC para o mapa
     fetch('https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-42-mun.json')
       .then(res => res.json())
       .then(data => setMapGeoJson(data))
       .catch(err => console.error("Erro ao carregar mapa:", err));
-  }, []);
+  }, [googleScriptUrl]);
 
   // --- FUNÇÕES DE DADOS E AÇÕES (Sem Firebase) ---
   const saveEmendasLocally = (data) => {
@@ -135,24 +154,29 @@ export default function App() {
   };
 
   const saveSettingsLocally = (pass, url) => {
-    localStorage.setItem('tabulum_emendas_settings', JSON.stringify({ pass: pass || adminPassword, url: url || googleScriptUrl }));
-    if (pass) setAdminPassword(pass);
-    if (url) setGoogleScriptUrl(url);
+    if (pass) {
+      localStorage.setItem('tabulum_emendas_pass', pass);
+      setAdminPassword(pass);
+    }
+    if (url) {
+      localStorage.setItem('tabulum_emendas_script_url', url);
+      setGoogleScriptUrl(url);
+    }
   };
 
   const syncWithGoogleSheet = async () => {
-    if (!googleScriptUrl) {
-      alert("Por favor, configure o link do Google Script na aba de Ajustes primeiro.");
+    const urlToFetch = googleScriptUrl && googleScriptUrl !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI" ? googleScriptUrl : SCRIPT_URL;
+    if (!urlToFetch || urlToFetch === "COLE_O_LINK_DO_SEU_SCRIPT_AQUI") {
+      alert("Por favor, configure o link do Google Script na aba de Ajustes primeiro ou fixe no código-fonte.");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(googleScriptUrl);
+      const response = await fetch(urlToFetch);
       if (!response.ok) throw new Error("Falha ao carregar do script.");
       
       const newData = await response.json();
-      
       if (newData && newData.length > 0) {
         saveEmendasLocally(newData);
         alert("Sincronização concluída com sucesso!");
@@ -170,7 +194,6 @@ export default function App() {
     try {
       // Salva localmente
       const updatedEmendas = emendas.map(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'] ? editingEmenda : e);
-      // Se não achar (nova emenda), adiciona
       if (!emendas.some(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'])) {
          updatedEmendas.push(editingEmenda);
       }
@@ -180,9 +203,10 @@ export default function App() {
       setEditingEmenda(null);
       setCurrentView('detail');
 
-      // Tenta salvar na Planilha via Apps Script (como no TABULUM MAIN)
-      if (googleScriptUrl) {
-        fetch(googleScriptUrl, {
+      // Tenta salvar na Planilha via Apps Script (Sincronização Universal)
+      const urlToSync = googleScriptUrl && googleScriptUrl !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI" ? googleScriptUrl : SCRIPT_URL;
+      if (urlToSync && urlToSync !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI") {
+        fetch(urlToSync, {
           method: 'POST',
           body: JSON.stringify({ action: 'update', data: editingEmenda }),
           headers: { 'Content-Type': 'text/plain;charset=utf-8' }
