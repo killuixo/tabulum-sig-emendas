@@ -544,7 +544,7 @@ export default function App() {
                 onClick={() => { if(val > 0) { setCurrentView('list'); setFilterMunicipio(feature.properties.name); } }}
               />
             );
-          });}
+          })}
         </svg>
       );
     };
