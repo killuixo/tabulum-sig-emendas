@@ -334,10 +334,13 @@ export default function App() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center cursor-pointer group" onClick={() => setCurrentView('list')}>
-            <div className="bg-rose-700 w-10 h-10 border-2 border-black flex items-center justify-center mr-3 group-hover:bg-amber-400 transition-colors">
-              <MapPinIcon className="h-6 w-6 text-white group-hover:text-black" />
-            </div>
-            <span className="font-black text-2xl tracking-tighter uppercase text-black hidden sm:block">TABULUM - EMENDAS</span>
+            <img 
+              src="/icone.png" 
+              alt="Ícone TABULUM" 
+              className="w-10 h-10 mr-3 object-contain transition-transform group-hover:scale-110"
+              onError={(e) => { e.target.style.display = 'none'; }} 
+            />
+            <span className="font-black text-2xl tracking-tighter text-black hidden sm:block">TABULUM - Emendas</span>
           </div>
           <div className="flex items-center space-x-3">
             {isAdmin ? (
