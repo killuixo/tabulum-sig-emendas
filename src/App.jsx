@@ -24,7 +24,6 @@ const LinkIcon = (p) => <Icon {...p} path={<><path d="M10 13a5 5 0 0 0 7.54.54l3
 const LayoutDashboardIcon = (p) => <Icon {...p} path={<><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></>} />;
 const TableIcon = (p) => <Icon {...p} path={<><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></>} />;
 
-
 // --- FUNÇÕES UTILITÁRIAS ---
 function parseCSV(text) {
   const csvText = text.replace(/^\uFEFF/, '');
@@ -69,17 +68,11 @@ function normalizeStr(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
 }
 
-// URL CENTRAL DO SEU GOOGLE SCRIPT (COLE SEU LINK ENTRE AS ASPAS)
-// Assim como na arquitetura do TABULUM MAIN, fixar este link aqui 
-// garante que qualquer celular que abrir a página Vercel sincronizará automaticamente.
-const SCRIPT_URL = "COLE_O_LINK_DO_SEU_SCRIPT_AQUI";
-
 export default function App() {
   const [emendas, setEmendas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('admin');
-  const [googleScriptUrl, setGoogleScriptUrl] = useState(() => localStorage.getItem('tabulum_emendas_script_url') || SCRIPT_URL);
   const [mapGeoJson, setMapGeoJson] = useState(null);
   
   // Navegação e Estados de Tela
@@ -118,22 +111,18 @@ export default function App() {
       const storedPass = localStorage.getItem('tabulum_emendas_pass');
       if (storedPass) setAdminPassword(storedPass);
 
-      // 2. Busca dados atualizados da nuvem silenciosamente (Sincronização Universal)
-      const urlToFetch = googleScriptUrl && googleScriptUrl !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI" 
-        ? googleScriptUrl 
-        : SCRIPT_URL;
-
-      if (urlToFetch && urlToFetch !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI") {
-        try {
-          const response = await fetch(urlToFetch);
+      // 2. Busca dados atualizados do Proxy Seguro no Backend (Vercel)
+      try {
+        const response = await fetch('/api/emendas');
+        if (response.ok) {
           const newData = await response.json();
           if (newData && newData.length > 0) {
             setEmendas(newData);
             localStorage.setItem('tabulum_emendas_data', JSON.stringify(newData));
           }
-        } catch (error) {
-          console.error("Erro ao sincronizar com Google Script:", error);
         }
+      } catch (error) {
+        console.error("Erro ao sincronizar com servidor interno:", error);
       }
       setLoading(false);
     };
@@ -145,36 +134,27 @@ export default function App() {
       .then(res => res.json())
       .then(data => setMapGeoJson(data))
       .catch(err => console.error("Erro ao carregar mapa:", err));
-  }, [googleScriptUrl]);
+  }, []); // Dependência vazia, roda apenas na inicialização
 
-  // --- FUNÇÕES DE DADOS E AÇÕES (Sem Firebase) ---
+  // --- FUNÇÕES DE DADOS E AÇÕES ---
   const saveEmendasLocally = (data) => {
     localStorage.setItem('tabulum_emendas_data', JSON.stringify(data));
     setEmendas(data);
   };
 
-  const saveSettingsLocally = (pass, url) => {
+  const saveSettingsLocally = (pass) => {
     if (pass) {
       localStorage.setItem('tabulum_emendas_pass', pass);
       setAdminPassword(pass);
     }
-    if (url) {
-      localStorage.setItem('tabulum_emendas_script_url', url);
-      setGoogleScriptUrl(url);
-    }
   };
 
   const syncWithGoogleSheet = async () => {
-    const urlToFetch = googleScriptUrl && googleScriptUrl !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI" ? googleScriptUrl : SCRIPT_URL;
-    if (!urlToFetch || urlToFetch === "COLE_O_LINK_DO_SEU_SCRIPT_AQUI") {
-      alert("Por favor, configure o link do Google Script na aba de Ajustes primeiro ou fixe no código-fonte.");
-      return;
-    }
-
     setLoading(true);
     try {
-      const response = await fetch(urlToFetch);
-      if (!response.ok) throw new Error("Falha ao carregar do script.");
+      // Usa a rota segura do servidor interno
+      const response = await fetch('/api/emendas');
+      if (!response.ok) throw new Error("Falha ao carregar do servidor interno.");
       
       const newData = await response.json();
       if (newData && newData.length > 0) {
@@ -182,8 +162,8 @@ export default function App() {
         alert("Sincronização concluída com sucesso!");
       }
     } catch (error) {
-      console.error("Erro ao sincronizar com Google Script:", error);
-      alert("Erro ao sincronizar. Verifique se o link do script está correto e tem permissão pública.");
+      console.error("Erro ao sincronizar com proxy interno:", error);
+      alert("Erro ao sincronizar. Verifique se as variáveis de ambiente estão configuradas no Vercel.");
     } finally {
       setLoading(false);
     }
@@ -203,15 +183,13 @@ export default function App() {
       setEditingEmenda(null);
       setCurrentView('detail');
 
-      // Tenta salvar na Planilha via Apps Script (Sincronização Universal)
-      const urlToSync = googleScriptUrl && googleScriptUrl !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI" ? googleScriptUrl : SCRIPT_URL;
-      if (urlToSync && urlToSync !== "COLE_O_LINK_DO_SEU_SCRIPT_AQUI") {
-        fetch(urlToSync, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'update', data: editingEmenda }),
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-        }).catch(err => console.error("Erro ao enviar para a planilha:", err));
-      }
+      // Tenta salvar na Planilha usando o Proxy Interno Seguro
+      fetch('/api/emendas', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'update', data: editingEmenda }),
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(err => console.error("Erro ao enviar para o servidor:", err));
+      
     } catch (error) {
       console.error("Erro ao salvar:", error);
     }
@@ -252,7 +230,7 @@ export default function App() {
   };
 
   const handleChangePassword = (newPassword) => {
-    saveSettingsLocally(newPassword, null);
+    saveSettingsLocally(newPassword);
     alert("Senha alterada com sucesso!");
   };
 
@@ -566,7 +544,7 @@ export default function App() {
                 onClick={() => { if(val > 0) { setCurrentView('list'); setFilterMunicipio(feature.properties.name); } }}
               />
             );
-          })}
+          });}
         </svg>
       );
     };
@@ -729,7 +707,7 @@ export default function App() {
                   className="bg-white text-black border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-gray-100 transition-transform active:translate-y-1 active:shadow-none flex items-center">
                   <XIcon className="h-5 w-5 mr-2" /> Cancelar
                 </button>
-                <button onClick={() => confirmAction("Salvar Alterações", "Confirmar alterações? A mudança será salva e sincronizada.", handleSaveEmenda)}
+                <button onClick={() => confirmAction("Salvar Alterações", "Confirmar alterações? A mudança será salva e sincronizada na nuvem.", handleSaveEmenda)}
                   className="bg-teal-500 text-black border-2 border-black px-6 py-2 font-black uppercase shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-teal-600 transition-transform active:translate-y-1 active:shadow-none flex items-center">
                   <SaveIcon className="h-5 w-5 mr-2" /> Salvar
                 </button>
@@ -789,7 +767,6 @@ export default function App() {
 
   const SettingsView = () => {
     const [newPass, setNewPass] = useState('');
-    const [newScriptUrl, setNewScriptUrl] = useState(googleScriptUrl || '');
 
     return (
       <div className="max-w-2xl mx-auto px-4 py-8 animate-in fade-in">
@@ -804,19 +781,7 @@ export default function App() {
           <div className="p-8 space-y-8">
             <div className="bg-amber-400 border-4 border-black text-black p-4 flex items-start shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
               <AlertTriangleIcon className="h-6 w-6 mr-3 flex-shrink-0" />
-              <p className="text-sm font-bold">Modo Independente Ativado. Seus dados são salvos localmente e sincronizados diretamente com sua Planilha Google via Apps Script.</p>
-            </div>
-             <div className="border-2 border-black p-6 bg-gray-50">
-              <h3 className="text-xl font-black uppercase text-rose-700 border-b-4 border-black pb-2 mb-4 flex items-center"><LinkIcon className="h-6 w-6 mr-2" /> Google Sheets Link</h3>
-              <div className="mb-4">
-                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                  <input type="url" value={newScriptUrl} onChange={(e) => setNewScriptUrl(e.target.value)} placeholder="Cole aqui o link do script..." className="flex-1 p-3 bg-white border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-medium text-sm" />
-                  <button onClick={() => {
-                    saveSettingsLocally(null, newScriptUrl);
-                    alert("Link do script atualizado localmente!");
-                  }} className="bg-teal-600 text-white font-black uppercase px-6 border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-teal-700 transition-transform active:translate-y-1 active:shadow-none">Salvar</button>
-                </div>
-              </div>
+              <p className="text-sm font-bold">Modo de Segurança Máxima Ativado. A URL da planilha Google agora é gerenciada exclusivamente pelo Servidor (Backend). Você não precisa mais configurá-la aqui.</p>
             </div>
             <div className="border-2 border-black p-6 bg-gray-50">
               <h3 className="text-xl font-black uppercase text-teal-700 border-b-4 border-black pb-2 mb-4 flex items-center"><UploadCloudIcon className="h-6 w-6 mr-2" /> Importação CSV Manual</h3>
