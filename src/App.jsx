@@ -100,6 +100,9 @@ export default function App() {
 
   // --- EFEITOS: INICIALIZAÇÃO UNIVERSAL (Padrão TABULUM MAIN) ---
   useEffect(() => {
+    // Força o título da página caso o HTML não carregue a tempo
+    document.title = "TABULUM - Emendas";
+
     const loadData = async () => {
       // 1. Tenta carregar dados locais para visualização instantânea
       const storedEmendas = localStorage.getItem('tabulum_emendas_data');
@@ -335,7 +338,7 @@ export default function App() {
         <div className="flex justify-between h-16">
           <div className="flex items-center cursor-pointer group" onClick={() => setCurrentView('list')}>
             <img 
-              src="/icone.png" 
+              src="/icon-192x192.png" 
               alt="Ícone TABULUM" 
               className="w-10 h-10 mr-3 object-contain transition-transform group-hover:scale-110"
               onError={(e) => { e.target.style.display = 'none'; }} 
