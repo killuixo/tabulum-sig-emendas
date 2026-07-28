@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-// --- ÍCONES SVG NATIVOS (Independentes de bibliotecas externas) ---
 const Icon = ({ path, className = "w-6 h-6", onClick, size, style }) => (
   <svg onClick={onClick} style={{ width: size, height: size, ...style }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter" className={className}>
     {path}
@@ -25,8 +24,8 @@ const TableIcon = (p) => <Icon {...p} path={<><path d="M12 3v18"/><rect width="1
 const ChevronUpIcon = (p) => <Icon {...p} path={<><path d="m18 15-6-6-6 6"/></>} />;
 const ChevronDownIcon = (p) => <Icon {...p} path={<><path d="m6 9 6 6 6-6"/></>} />;
 const GridIcon = (p) => <Icon {...p} path={<><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></>} />;
+const ListIcon = (p) => <Icon {...p} path={<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>} />;
 
-// --- FUNÇÕES UTILITÁRIAS ---
 function parseCSV(text) {
   const csvText = text.replace(/^\uFEFF/, '');
   const rows = [];
@@ -102,7 +101,6 @@ export default function App() {
   const temas = useMemo(() => [...new Set(emendas.map(e => e.TEMA).filter(Boolean))].sort(), [emendas]);
   const situacoes = useMemo(() => [...new Set(emendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort(), [emendas]);
 
-  // Efeito de inicialização
   useEffect(() => {
     document.title = "TABULUM - Emendas";
 
@@ -453,7 +451,7 @@ export default function App() {
         <HeaderSwitcher title="Painel de Emendas" />
         <FilterBar />
 
-        {/* Toggle View Mode */}
+        {/* Alternância Tabela/Cards */}
         <div className="flex justify-end mb-4">
           <div className="flex border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
             <button 
@@ -490,28 +488,37 @@ export default function App() {
                 {filteredAndSortedEmendas.map((emenda, idx) => (
                   <tr key={emenda['NÚMERO DA EMENDA'] || idx} onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
                     className="hover:bg-amber-50 cursor-pointer border-b-2 border-black transition-colors">
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200">
+                    
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200 w-1">
                       {emenda['NÚMERO DA EMENDA']}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200">
+                    
+                    {/* Município sem caixa, apenas com texto Teal para economizar espaço */}
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200 w-1">
                       {emenda['MUNICÍPIO']}
                     </td>
+                    
+                    {/* Objeto expande o máximo que der */}
                     <td className="px-3 py-2 text-sm text-gray-800 font-medium border-r-2 border-gray-200">
                       {emenda.OBJETO}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-rose-700 border-r-2 border-gray-200">
+                    
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-rose-700 border-r-2 border-gray-200 w-1">
                       {emenda.ARTICULADOR || '-'}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap border-r-2 border-gray-200">
+                    
+                    <td className="px-3 py-2 whitespace-nowrap border-r-2 border-gray-200 w-1">
                       <span className={`inline-block border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase
                         ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-teal-600 text-white' : 
                           emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-amber-400 text-black' : 'bg-gray-200 text-black'}`}>
                         {emenda.SITUAÇÃO || 'Indefinida'}
                       </span>
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-black text-black">
+                    
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-black text-black w-1">
                       {formatCurrency(parseCurrency(emenda.TOTAL))}
                     </td>
+
                   </tr>
                 ))}
                 {filteredAndSortedEmendas.length === 0 && (
