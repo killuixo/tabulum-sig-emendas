@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 const Icon = ({ path, className = "w-6 h-6", onClick, size, style }) => (
   <svg onClick={onClick} style={{ width: size, height: size, ...style }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter" className={className}>
@@ -7,6 +7,7 @@ const Icon = ({ path, className = "w-6 h-6", onClick, size, style }) => (
 );
 const SearchIcon = (p) => <Icon {...p} path={<><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></>} />;
 const MapPinIcon = (p) => <Icon {...p} path={<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></>} />;
+const MapIcon = (p) => <Icon {...p} path={<><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></>} />;
 const UserIcon = (p) => <Icon {...p} path={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>} />;
 const TagIcon = (p) => <Icon {...p} path={<><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></>} />;
 const EditIcon = (p) => <Icon {...p} path={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>} />;
@@ -77,27 +78,39 @@ export default function App() {
   const [mapGeoJson, setMapGeoJson] = useState(null);
   
   // Navegação e Estados de Tela
-  const [currentView, setCurrentView] = useState('list'); // 'list', 'dashboard', 'detail', 'edit', 'settings'
-  const [viewMode, setViewMode] = useState('table'); // 'table' ou 'cards' para a listagem principal
+  const [currentView, setCurrentView] = useState('list'); 
+  const [viewMode, setViewMode] = useState('table'); 
   const [selectedEmenda, setSelectedEmenda] = useState(null);
   const [editingEmenda, setEditingEmenda] = useState(null);
   
-  // Filtros e Ordenação
+  // Filtros Múltiplos e Ordenação
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterArticulador, setFilterArticulador] = useState('');
-  const [filterMunicipio, setFilterMunicipio] = useState('');
-  const [filterTema, setFilterTema] = useState('');
-  const [filterSituacao, setFilterSituacao] = useState('');
+  const [filterArticuladores, setFilterArticuladores] = useState([]);
+  const [filterMunicipios, setFilterMunicipios] = useState([]);
+  const [filterRegioes, setFilterRegioes] = useState([]);
+  const [filterTemas, setFilterTemas] = useState([]);
+  const [filterSituacoes, setFilterSituacoes] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  // Controle de Dropdowns abertos
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   // Modais
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
+  // Fechar dropdowns ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = () => setOpenDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   // Listas Únicas para os Filtros
   const articuladores = useMemo(() => [...new Set(emendas.map(e => e.ARTICULADOR).filter(Boolean))].sort(), [emendas]);
   const municipios = useMemo(() => [...new Set(emendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort(), [emendas]);
+  const regioes = useMemo(() => [...new Set(emendas.map(e => e.REGIÃO).filter(Boolean))].sort(), [emendas]);
   const temas = useMemo(() => [...new Set(emendas.map(e => e.TEMA).filter(Boolean))].sort(), [emendas]);
   const situacoes = useMemo(() => [...new Set(emendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort(), [emendas]);
 
@@ -134,6 +147,18 @@ export default function App() {
       .then(data => setMapGeoJson(data))
       .catch(err => console.error("Erro ao carregar mapa:", err));
   }, []);
+
+  const resetToFrontPage = () => {
+    setCurrentView('list');
+    setViewMode('table');
+    setSearchTerm('');
+    setFilterArticuladores([]);
+    setFilterMunicipios([]);
+    setFilterRegioes([]);
+    setFilterTemas([]);
+    setFilterSituacoes([]);
+    setSortConfig({ key: null, direction: 'asc' });
+  };
 
   const saveEmendasLocally = (data) => {
     localStorage.setItem('tabulum_emendas_data', JSON.stringify(data));
@@ -252,12 +277,12 @@ export default function App() {
   };
 
   const handleEntityClick = (type, value) => {
-    setCurrentView('list');
-    setSearchTerm('');
-    if (type === 'articulador') setFilterArticulador(value);
-    if (type === 'municipio') setFilterMunicipio(value);
-    if (type === 'tema') setFilterTema(value);
-    if (type === 'situacao') setFilterSituacao(value);
+    resetToFrontPage(); // Limpa outros filtros antes de focar
+    if (type === 'articulador') setFilterArticuladores([value]);
+    if (type === 'municipio') setFilterMunicipios([value]);
+    if (type === 'regiao') setFilterRegioes([value]);
+    if (type === 'tema') setFilterTemas([value]);
+    if (type === 'situacao') setFilterSituacoes([value]);
   };
 
   const requestSort = (key) => {
@@ -269,17 +294,16 @@ export default function App() {
   };
 
   const filteredAndSortedEmendas = useMemo(() => {
-    // 1. Aplicar Filtros
     let result = emendas.filter(e => {
       const matchesSearch = searchTerm === '' || JSON.stringify(e).toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesArticulador = filterArticulador === '' || e.ARTICULADOR === filterArticulador;
-      const matchesMunicipio = filterMunicipio === '' || e['MUNICÍPIO'] === filterMunicipio;
-      const matchesTema = filterTema === '' || e.TEMA === filterTema;
-      const matchesSituacao = filterSituacao === '' || e.SITUAÇÃO === filterSituacao;
-      return matchesSearch && matchesArticulador && matchesMunicipio && matchesTema && matchesSituacao;
+      const matchesArticulador = filterArticuladores.length === 0 || filterArticuladores.includes(e.ARTICULADOR);
+      const matchesMunicipio = filterMunicipios.length === 0 || filterMunicipios.includes(e['MUNICÍPIO']);
+      const matchesRegiao = filterRegioes.length === 0 || filterRegioes.includes(e.REGIÃO);
+      const matchesTema = filterTemas.length === 0 || filterTemas.includes(e.TEMA);
+      const matchesSituacao = filterSituacoes.length === 0 || filterSituacoes.includes(e.SITUAÇÃO);
+      return matchesSearch && matchesArticulador && matchesMunicipio && matchesRegiao && matchesTema && matchesSituacao;
     });
 
-    // 2. Aplicar Ordenação
     if (sortConfig.key) {
       result.sort((a, b) => {
         let valA = a[sortConfig.key];
@@ -305,7 +329,6 @@ export default function App() {
            return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
         }
 
-        // Ordenação padrão para strings (Alfabética)
         valA = String(valA || '').toLowerCase();
         valB = String(valB || '').toLowerCase();
         if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -315,58 +338,104 @@ export default function App() {
     }
 
     return result;
-  }, [emendas, searchTerm, filterArticulador, filterMunicipio, filterTema, filterSituacao, sortConfig]);
+  }, [emendas, searchTerm, filterArticuladores, filterMunicipios, filterRegioes, filterTemas, filterSituacoes, sortConfig]);
 
-  const FilterBar = () => (
-    <div className="bg-white p-4 border-4 border-black mb-4 flex flex-wrap gap-4 items-center shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
-      <div className="flex-1 min-w-[150px] relative">
-        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-        <input 
-          type="text" 
-          placeholder="Busca livre..." 
-          className="w-full pl-10 pr-4 py-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-medium"
-          value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-        />
+  const MultiSelect = ({ id, label, options, selected, onChange }) => {
+    const isOpen = openDropdown === id;
+    
+    const handleToggleDropdown = (e) => {
+      e.stopPropagation();
+      setOpenDropdown(isOpen ? null : id);
+    };
+
+    const handleToggleOption = (e, opt) => {
+      e.stopPropagation();
+      if (selected.includes(opt)) {
+        onChange(selected.filter(i => i !== opt));
+      } else {
+        onChange([...selected, opt]);
+      }
+    };
+
+    const handleClear = (e) => {
+      e.stopPropagation();
+      onChange([]);
+    };
+
+    let displayText = `${label}: Todos`;
+    if (selected.length === 1) displayText = `${label}: ${selected[0]}`;
+    else if (selected.length > 1) displayText = `${label}: ${selected.length} itens`;
+
+    return (
+      <div className="relative">
+        <div onClick={handleToggleDropdown} 
+             className="px-3 py-2 bg-gray-50 border-2 border-black focus:outline-none focus:border-rose-700 font-bold uppercase text-xs cursor-pointer flex justify-between items-center min-w-[160px] max-w-[200px]">
+          <span className="truncate pr-2" title={displayText}>{displayText}</span>
+          <div className="flex items-center space-x-1 flex-shrink-0">
+             {selected.length > 0 && (
+                 <div onClick={handleClear} className="hover:text-rose-700 bg-gray-200 rounded p-0.5" title="Limpar filtro">
+                     <XIcon className="w-3 h-3" />
+                 </div>
+             )}
+             <ChevronDownIcon className="w-4 h-4" />
+          </div>
+        </div>
+        {isOpen && (
+          <div className="absolute z-30 top-full left-0 mt-1 w-64 max-h-64 overflow-y-auto bg-white border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] flex flex-col p-2"
+               onClick={(e) => e.stopPropagation()}>
+             {options.map(opt => (
+                 <label key={opt} className="flex items-center space-x-2 cursor-pointer hover:bg-amber-100 p-1.5 transition-colors">
+                     <input
+                        type="checkbox"
+                        className="accent-rose-700 w-4 h-4 border-2 border-black cursor-pointer"
+                        checked={selected.includes(opt)}
+                        onChange={(e) => handleToggleOption(e, opt)}
+                     />
+                     <span className="text-xs font-bold uppercase truncate flex-1">{opt}</span>
+                 </label>
+             ))}
+          </div>
+        )}
       </div>
-      
-      <select className="px-3 py-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-bold uppercase text-xs cursor-pointer"
-        value={filterArticulador} onChange={(e) => setFilterArticulador(e.target.value)}>
-        <option value="">Articulador: Todos</option>
-        {articuladores.map(a => <option key={a} value={a}>{a}</option>)}
-      </select>
+    );
+  };
 
-      <select className="px-3 py-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-bold uppercase text-xs cursor-pointer max-w-[180px] truncate"
-        value={filterMunicipio} onChange={(e) => setFilterMunicipio(e.target.value)}>
-        <option value="">Município: Todos</option>
-        {municipios.map(m => <option key={m} value={m}>{m}</option>)}
-      </select>
+  const FilterBar = () => {
+    const hasFilters = searchTerm || filterArticuladores.length > 0 || filterMunicipios.length > 0 || filterRegioes.length > 0 || filterTemas.length > 0 || filterSituacoes.length > 0;
+    
+    return (
+      <div className="bg-white p-4 border-4 border-black mb-4 flex flex-wrap gap-4 items-center shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
+        <div className="flex-1 min-w-[150px] relative">
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+          <input 
+            type="text" 
+            placeholder="Busca livre..." 
+            className="w-full pl-10 pr-4 py-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-medium"
+            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        
+        <MultiSelect id="art" label="Articulador" options={articuladores} selected={filterArticuladores} onChange={setFilterArticuladores} />
+        <MultiSelect id="mun" label="Município" options={municipios} selected={filterMunicipios} onChange={setFilterMunicipios} />
+        <MultiSelect id="reg" label="Região" options={regioes} selected={filterRegioes} onChange={setFilterRegioes} />
+        <MultiSelect id="tem" label="Tema" options={temas} selected={filterTemas} onChange={setFilterTemas} />
+        <MultiSelect id="sit" label="Situação" options={situacoes} selected={filterSituacoes} onChange={setFilterSituacoes} />
 
-      <select className="px-3 py-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-bold uppercase text-xs cursor-pointer max-w-[150px] truncate"
-        value={filterTema} onChange={(e) => setFilterTema(e.target.value)}>
-        <option value="">Tema: Todos</option>
-        {temas.map(t => <option key={t} value={t}>{t}</option>)}
-      </select>
-
-      <select className="px-3 py-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-bold uppercase text-xs cursor-pointer"
-        value={filterSituacao} onChange={(e) => setFilterSituacao(e.target.value)}>
-        <option value="">Situação: Todas</option>
-        {situacoes.map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
-
-      {(searchTerm || filterArticulador || filterMunicipio || filterTema || filterSituacao) && (
-        <button onClick={() => { setSearchTerm(''); setFilterArticulador(''); setFilterMunicipio(''); setFilterTema(''); setFilterSituacao(''); }}
-          className="bg-rose-700 p-2 text-white border-2 border-black hover:bg-rose-800 transition-colors" title="Limpar filtros">
-          <XIcon className="h-5 w-5" />
-        </button>
-      )}
-    </div>
-  );
+        {hasFilters && (
+          <button onClick={() => { setSearchTerm(''); setFilterArticuladores([]); setFilterMunicipios([]); setFilterRegioes([]); setFilterTemas([]); setFilterSituacoes([]); }}
+            className="bg-rose-700 p-2 text-white border-2 border-black hover:bg-rose-800 transition-colors" title="Limpar todos os filtros">
+            <XIcon className="h-5 w-5" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const Navbar = () => (
     <nav className="bg-white border-b-4 border-black sticky top-0 z-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div className="flex items-center cursor-pointer group" onClick={() => setCurrentView('list')}>
+          <div className="flex items-center cursor-pointer group" onClick={resetToFrontPage} title="Voltar ao Início">
             <img 
               src="https://raw.githubusercontent.com/killuixo/tabulum-sig-emendas/refs/heads/main/icon-192.png" 
               alt="Ícone TABULUM" 
@@ -431,7 +500,7 @@ export default function App() {
     const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
       const isActive = sortConfig?.key === sortKey;
       return (
-        <th className={`py-3 text-left text-xs font-black text-black uppercase cursor-pointer hover:bg-amber-500 transition-colors ${extraClasses}`}
+        <th className={`py-3 text-left text-xs font-black text-black uppercase cursor-pointer hover:bg-amber-500 transition-colors border-r-2 border-black ${extraClasses}`}
             onClick={() => requestSort(sortKey)}>
           <div className="flex items-center space-x-1">
             <span>{label}</span>
@@ -446,7 +515,7 @@ export default function App() {
     };
 
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in">
+      <div className="max-w-[95%] xl:max-w-[1400px] mx-auto px-4 py-8 animate-in fade-in">
         <HeaderSwitcher title="Painel de Emendas" />
         <FilterBar />
 
@@ -472,55 +541,62 @@ export default function App() {
 
         {viewMode === 'table' ? (
           <div className="bg-white border-4 border-black overflow-x-auto shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
-            <table className="min-w-full border-collapse w-full">
+            {/* Tabela Fixa: Colunas específicas com tamanhos rígidos. Objeto é livre para expandir */}
+            <table className="min-w-[1000px] w-full border-collapse table-fixed">
               <thead className="bg-amber-400 border-b-4 border-black">
                 <tr>
-                  {/* Utilizando w-[1%] whitespace-nowrap para encolher colunas secundárias e w-full no OBJETO */}
-                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
-                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
-                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="border-r-2 border-black w-full px-4" />
-                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
-                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
-                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-[1%] whitespace-nowrap px-3" />
+                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="w-[100px] px-3" />
+                  <SortableHeader label="Região" sortKey="REGIÃO" extraClasses="w-[120px] px-3" />
+                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="w-[150px] px-3" />
+                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="w-auto px-4" />
+                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="w-[130px] px-3" />
+                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="w-[110px] px-3" />
+                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-[140px] px-3 border-r-0" />
                 </tr>
               </thead>
               <tbody className="bg-white">
                 {filteredAndSortedEmendas.map((emenda, idx) => (
                   <tr key={emenda['NÚMERO DA EMENDA'] || idx} onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
-                    className="hover:bg-amber-50 cursor-pointer border-b-2 border-black transition-colors">
+                    className="hover:bg-amber-50 cursor-pointer border-b-2 border-black transition-colors h-full">
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200 w-[1%]">
+                    <td className="px-3 py-2 text-sm font-bold text-black border-r-2 border-gray-200 truncate">
                       {emenda['NÚMERO DA EMENDA']}
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200 w-[1%]">
+                    <td className="px-3 py-2 text-xs font-bold uppercase text-gray-600 border-r-2 border-gray-200 truncate" title={emenda.REGIÃO}>
+                      {emenda.REGIÃO || '-'}
+                    </td>
+
+                    <td className="px-3 py-2 text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200 truncate" title={emenda['MUNICÍPIO']}>
                       {emenda['MUNICÍPIO']}
                     </td>
                     
-                    <td className="px-4 py-2 text-sm text-gray-800 font-medium border-r-2 border-gray-200 w-full">
+                    {/* A coluna Objeto deixamos quebrar livremente ou ser tão grande quanto necessário */}
+                    <td className="px-4 py-2 text-sm text-gray-800 font-medium border-r-2 border-gray-200">
                       {emenda.OBJETO}
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-rose-700 border-r-2 border-gray-200 w-[1%]">
+                    <td className="px-3 py-2 text-sm font-bold text-rose-700 border-r-2 border-gray-200 truncate" title={emenda.ARTICULADOR}>
                       {emenda.ARTICULADOR || '-'}
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap border-r-2 border-gray-200 w-[1%]">
-                      <span className={`inline-block border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase
+                    <td className="px-3 py-2 border-r-2 border-gray-200 align-middle">
+                      <span className={`block w-full text-center border-2 border-black px-1 py-0.5 text-[10px] font-black uppercase truncate
                         ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-teal-600 text-white' : 
-                          emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-amber-400 text-black' : 'bg-gray-200 text-black'}`}>
+                          emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-amber-400 text-black' : 'bg-gray-200 text-black'}`}
+                        title={emenda.SITUAÇÃO}>
                         {emenda.SITUAÇÃO || 'Indefinida'}
                       </span>
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-black text-black w-[1%]">
+                    <td className="px-3 py-2 text-sm font-black text-black truncate text-right">
                       {formatCurrency(parseCurrency(emenda.TOTAL))}
                     </td>
 
                   </tr>
                 ))}
                 {filteredAndSortedEmendas.length === 0 && (
-                  <tr><td colSpan="6" className="px-6 py-12 text-center font-bold text-gray-500 uppercase">Nenhuma emenda encontrada.</td></tr>
+                  <tr><td colSpan="7" className="px-6 py-12 text-center font-bold text-gray-500 uppercase">Nenhuma emenda encontrada.</td></tr>
                 )}
               </tbody>
             </table>
@@ -543,16 +619,24 @@ export default function App() {
                   </span>
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
-                  <div className="flex items-center mb-2">
-                    <MapPinIcon className="h-4 w-4 mr-1 text-teal-700" />
-                    <p className="text-teal-700 font-black uppercase text-sm">{emenda['MUNICÍPIO']}</p>
+                  <div className="flex flex-wrap gap-x-4 mb-2">
+                    <div className="flex items-center">
+                      <MapPinIcon className="h-4 w-4 mr-1 text-teal-700" />
+                      <p className="text-teal-700 font-black uppercase text-sm">{emenda['MUNICÍPIO']}</p>
+                    </div>
+                    {emenda.REGIÃO && (
+                      <div className="flex items-center">
+                        <MapIcon className="h-4 w-4 mr-1 text-gray-600" />
+                        <p className="text-gray-600 font-black uppercase text-xs">{emenda.REGIÃO}</p>
+                      </div>
+                    )}
                   </div>
                   <p className="text-sm font-medium text-gray-800 line-clamp-4 flex-1">{emenda.OBJETO}</p>
                 </div>
                 <div className="bg-gray-50 border-t-4 border-black p-4 flex justify-between items-end">
                   <div>
                     <p className="text-[10px] font-black uppercase text-gray-500 mb-1">Articulador</p>
-                    <p className="text-rose-700 font-bold text-sm uppercase">{emenda.ARTICULADOR || '-'}</p>
+                    <p className="text-rose-700 font-bold text-sm uppercase truncate max-w-[120px]">{emenda.ARTICULADOR || '-'}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] font-black uppercase text-gray-500 mb-1">Total</p>
@@ -662,7 +746,7 @@ export default function App() {
                   setHoveredMuni({ name: feature.properties.name, val, x: e.clientX, y: e.clientY });
                 }}
                 onMouseLeave={() => setHoveredMuni(null)}
-                onClick={() => { if(val > 0) { setCurrentView('list'); setFilterMunicipio(feature.properties.name); } }}
+                onClick={() => { if(val > 0) { resetToFrontPage(); setFilterMunicipios([feature.properties.name]); } }}
               />
             );
           })}
@@ -671,7 +755,7 @@ export default function App() {
     };
 
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in">
+      <div className="max-w-[95%] xl:max-w-[1400px] mx-auto px-4 py-8 animate-in fade-in">
         <HeaderSwitcher title="Dashboard Estatístico" />
         <FilterBar />
 
@@ -792,7 +876,7 @@ export default function App() {
           <div className="text-black font-medium text-sm break-words">
             {displayValue || <span className="text-gray-400 italic">N/A</span>}
             {linkType && rawValue && (
-               <button onClick={() => handleEntityClick(linkType, rawValue)} className="ml-2 text-[10px] bg-amber-400 text-black border border-black px-1 uppercase font-bold hover:bg-amber-500">
+               <button onClick={(e) => { e.stopPropagation(); handleEntityClick(linkType, rawValue); }} className="ml-2 text-[10px] bg-amber-400 text-black border border-black px-1 uppercase font-bold hover:bg-amber-500">
                  Filtrar
                </button>
             )}
@@ -842,7 +926,7 @@ export default function App() {
             <div className="space-y-3 bg-gray-50 border-2 border-black p-4">
               <div className="bg-black text-white font-black uppercase text-sm py-1 px-3 inline-block border-2 border-black -mt-8 mb-4">Identificação</div>
               <InfoField label="Município" field="MUNICÍPIO" icon={MapPinIcon} linkType="municipio" color="teal" />
-              <InfoField label="Região" field="REGIÃO" />
+              <InfoField label="Região" field="REGIÃO" icon={MapIcon} linkType="regiao" />
               <InfoField label="Tema" field="TEMA" icon={TagIcon} linkType="tema" color="teal" />
               <InfoField label="Articulador" field="ARTICULADOR" icon={UserIcon} linkType="articulador" color="rose" />
               <InfoField label="Ano" field="ANO" />
