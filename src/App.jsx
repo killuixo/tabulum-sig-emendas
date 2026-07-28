@@ -20,9 +20,11 @@ const CheckCircleIcon = (p) => <Icon {...p} path={<><path d="M22 11.08V12a10 10 
 const AlertTriangleIcon = (p) => <Icon {...p} path={<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></>} />;
 const RefreshCwIcon = (p) => <Icon {...p} path={<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>} />;
 const UploadCloudIcon = (p) => <Icon {...p} path={<><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></>} />;
-const LinkIcon = (p) => <Icon {...p} path={<><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></>} />;
 const LayoutDashboardIcon = (p) => <Icon {...p} path={<><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></>} />;
 const TableIcon = (p) => <Icon {...p} path={<><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></>} />;
+const ChevronUpIcon = (p) => <Icon {...p} path={<><path d="m18 15-6-6-6 6"/></>} />;
+const ChevronDownIcon = (p) => <Icon {...p} path={<><path d="m6 9 6 6 6-6"/></>} />;
+const GridIcon = (p) => <Icon {...p} path={<><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></>} />;
 
 // --- FUNÇÕES UTILITÁRIAS ---
 function parseCSV(text) {
@@ -77,15 +79,17 @@ export default function App() {
   
   // Navegação e Estados de Tela
   const [currentView, setCurrentView] = useState('list'); // 'list', 'dashboard', 'detail', 'edit', 'settings'
+  const [viewMode, setViewMode] = useState('table'); // 'table' ou 'cards' para a listagem principal
   const [selectedEmenda, setSelectedEmenda] = useState(null);
   const [editingEmenda, setEditingEmenda] = useState(null);
   
-  // Filtros
+  // Filtros e Ordenação
   const [searchTerm, setSearchTerm] = useState('');
   const [filterArticulador, setFilterArticulador] = useState('');
   const [filterMunicipio, setFilterMunicipio] = useState('');
   const [filterTema, setFilterTema] = useState('');
   const [filterSituacao, setFilterSituacao] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
   // Modais
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -98,23 +102,18 @@ export default function App() {
   const temas = useMemo(() => [...new Set(emendas.map(e => e.TEMA).filter(Boolean))].sort(), [emendas]);
   const situacoes = useMemo(() => [...new Set(emendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort(), [emendas]);
 
-  // --- EFEITOS: INICIALIZAÇÃO UNIVERSAL (Padrão TABULUM MAIN) ---
+  // Efeito de inicialização
   useEffect(() => {
-    // Força o título da página caso o HTML não carregue a tempo
     document.title = "TABULUM - Emendas";
 
     const loadData = async () => {
-      // 1. Tenta carregar dados locais para visualização instantânea
       const storedEmendas = localStorage.getItem('tabulum_emendas_data');
       if (storedEmendas) setEmendas(JSON.parse(storedEmendas));
-
       const storedAuth = sessionStorage.getItem('tabulum_emendas_auth');
       if (storedAuth === 'true') setIsAdmin(true);
-
       const storedPass = localStorage.getItem('tabulum_emendas_pass');
       if (storedPass) setAdminPassword(storedPass);
 
-      // 2. Busca dados atualizados do Proxy Seguro no Backend (Vercel)
       try {
         const response = await fetch('/api/emendas');
         if (response.ok) {
@@ -132,14 +131,12 @@ export default function App() {
 
     loadData();
 
-    // Carregar o GeoJSON de SC para o mapa
     fetch('https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-42-mun.json')
       .then(res => res.json())
       .then(data => setMapGeoJson(data))
       .catch(err => console.error("Erro ao carregar mapa:", err));
-  }, []); // Dependência vazia, roda apenas na inicialização
+  }, []);
 
-  // --- FUNÇÕES DE DADOS E AÇÕES ---
   const saveEmendasLocally = (data) => {
     localStorage.setItem('tabulum_emendas_data', JSON.stringify(data));
     setEmendas(data);
@@ -155,10 +152,8 @@ export default function App() {
   const syncWithGoogleSheet = async () => {
     setLoading(true);
     try {
-      // Usa a rota segura do servidor interno
       const response = await fetch('/api/emendas');
       if (!response.ok) throw new Error("Falha ao carregar do servidor interno.");
-      
       const newData = await response.json();
       if (newData && newData.length > 0) {
         saveEmendasLocally(newData);
@@ -166,7 +161,7 @@ export default function App() {
       }
     } catch (error) {
       console.error("Erro ao sincronizar com proxy interno:", error);
-      alert("Erro ao sincronizar. Verifique se as variáveis de ambiente estão configuradas no Vercel.");
+      alert("Erro ao sincronizar. Verifique a conexão com o servidor.");
     } finally {
       setLoading(false);
     }
@@ -175,24 +170,20 @@ export default function App() {
   const handleSaveEmenda = async () => {
     if (!editingEmenda) return;
     try {
-      // Salva localmente
       const updatedEmendas = emendas.map(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'] ? editingEmenda : e);
       if (!emendas.some(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'])) {
          updatedEmendas.push(editingEmenda);
       }
-      
       saveEmendasLocally(updatedEmendas);
       setSelectedEmenda(editingEmenda);
       setEditingEmenda(null);
       setCurrentView('detail');
 
-      // Tenta salvar na Planilha usando o Proxy Interno Seguro
       fetch('/api/emendas', {
         method: 'POST',
         body: JSON.stringify({ action: 'update', data: editingEmenda }),
         headers: { 'Content-Type': 'application/json' }
       }).catch(err => console.error("Erro ao enviar para o servidor:", err));
-      
     } catch (error) {
       console.error("Erro ao salvar:", error);
     }
@@ -216,7 +207,6 @@ export default function App() {
             });
             return obj;
           }).filter(em => em['NÚMERO DA EMENDA']);
-          
           saveEmendasLocally(newData);
           alert("Base importada com sucesso via CSV!");
         } else {
@@ -240,7 +230,7 @@ export default function App() {
   const handleLogin = () => {
     if (loginInput === adminPassword) {
       setIsAdmin(true);
-      sessionStorage.setItem('tabulum_emendas_auth', 'true'); // Mantém logado na sessão da aba
+      sessionStorage.setItem('tabulum_emendas_auth', 'true');
       setShowLoginModal(false);
       setLoginInput('');
     } else {
@@ -272,23 +262,66 @@ export default function App() {
     if (type === 'situacao') setFilterSituacao(value);
   };
 
-  // --- DADOS FILTRADOS PARA LISTA E DASHBOARD ---
-  const filteredEmendas = useMemo(() => {
-    return emendas.filter(e => {
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const filteredAndSortedEmendas = useMemo(() => {
+    // 1. Aplicar Filtros
+    let result = emendas.filter(e => {
       const matchesSearch = searchTerm === '' || JSON.stringify(e).toLowerCase().includes(searchTerm.toLowerCase());
       const matchesArticulador = filterArticulador === '' || e.ARTICULADOR === filterArticulador;
       const matchesMunicipio = filterMunicipio === '' || e['MUNICÍPIO'] === filterMunicipio;
       const matchesTema = filterTema === '' || e.TEMA === filterTema;
       const matchesSituacao = filterSituacao === '' || e.SITUAÇÃO === filterSituacao;
-      
       return matchesSearch && matchesArticulador && matchesMunicipio && matchesTema && matchesSituacao;
     });
-  }, [emendas, searchTerm, filterArticulador, filterMunicipio, filterTema, filterSituacao]);
 
-  // --- COMPONENTES COMPARTILHADOS ---
+    // 2. Aplicar Ordenação
+    if (sortConfig.key) {
+      result.sort((a, b) => {
+        let valA = a[sortConfig.key];
+        let valB = b[sortConfig.key];
+
+        if (sortConfig.key === 'TOTAL') {
+          valA = parseCurrency(valA);
+          valB = parseCurrency(valB);
+          return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+        }
+
+        if (sortConfig.key === 'NÚMERO DA EMENDA') {
+           // Assume formato num/ano (ex: 2071/2023)
+           const partsA = (String(valA) || '').split('/');
+           const partsB = (String(valB) || '').split('/');
+           const numA = parseInt(partsA[0]) || 0;
+           const yearA = parseInt(partsA[1]) || 0;
+           const numB = parseInt(partsB[0]) || 0;
+           const yearB = parseInt(partsB[1]) || 0;
+
+           if (yearA !== yearB) {
+             return sortConfig.direction === 'asc' ? yearA - yearB : yearB - yearA;
+           }
+           return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+        }
+
+        // Ordenação padrão para strings (Alfabética)
+        valA = String(valA || '').toLowerCase();
+        valB = String(valB || '').toLowerCase();
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [emendas, searchTerm, filterArticulador, filterMunicipio, filterTema, filterSituacao, sortConfig]);
 
   const FilterBar = () => (
-    <div className="bg-white p-4 border-4 border-black mb-8 flex flex-wrap gap-4 items-center shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
+    <div className="bg-white p-4 border-4 border-black mb-4 flex flex-wrap gap-4 items-center shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
       <div className="flex-1 min-w-[150px] relative">
         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
         <input 
@@ -397,106 +430,183 @@ export default function App() {
     </div>
   );
 
-  // --- VIEWS ---
+  const ListView = () => {
+    const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
+      const isActive = sortConfig?.key === sortKey;
+      return (
+        <th className={`px-3 py-3 text-left text-xs font-black text-black uppercase cursor-pointer hover:bg-amber-500 transition-colors ${extraClasses}`}
+            onClick={() => requestSort(sortKey)}>
+          <div className="flex items-center space-x-1">
+            <span>{label}</span>
+            {isActive ? (
+              sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />
+            ) : (
+              <ChevronUpIcon className="w-4 h-4 opacity-20" />
+            )}
+          </div>
+        </th>
+      );
+    };
 
-  const ListView = () => (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in">
-      <HeaderSwitcher title="Painel de Emendas" />
-      <FilterBar />
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in">
+        <HeaderSwitcher title="Painel de Emendas" />
+        <FilterBar />
 
-      <div className="bg-white border-4 border-black overflow-x-auto shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
-        <table className="min-w-full border-collapse">
-          <thead className="bg-amber-400 border-b-4 border-black">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase border-r-2 border-black">Número</th>
-              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase border-r-2 border-black">Município</th>
-              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase border-r-2 border-black">Objeto</th>
-              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase border-r-2 border-black">Articulador</th>
-              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase border-r-2 border-black">Situação</th>
-              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase">Total</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white">
-            {filteredEmendas.map((emenda, idx) => (
-              <tr key={emenda['NÚMERO DA EMENDA'] || idx} onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
-                className="hover:bg-amber-50 cursor-pointer border-b-2 border-black transition-colors">
-                <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200">{emenda['NÚMERO DA EMENDA']}</td>
-                <td className="px-4 py-3 whitespace-nowrap border-r-2 border-gray-200">
-                  <span className="inline-block bg-teal-200 text-teal-900 border-2 border-black px-2 py-0.5 text-xs font-bold uppercase">{emenda['MUNICÍPIO']}</span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800 font-medium max-w-[200px] truncate border-r-2 border-gray-200" title={emenda.OBJETO}>{emenda.OBJETO}</td>
-                <td className="px-4 py-3 whitespace-nowrap border-r-2 border-gray-200">
-                  <span className="text-sm font-bold text-rose-700">{emenda.ARTICULADOR || '-'}</span>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap border-r-2 border-gray-200">
-                  <span className={`inline-block border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase
-                    ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-teal-600 text-white' : 
-                      emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-amber-400 text-black' : 'bg-gray-200 text-black'}`}>
+        {/* Toggle View Mode */}
+        <div className="flex justify-end mb-4">
+          <div className="flex border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+            <button 
+              onClick={() => setViewMode('table')}
+              className={`p-2 flex items-center font-bold uppercase text-xs border-r-2 border-black transition-colors ${viewMode === 'table' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}
+              title="Visualização em Lista"
+            >
+              <ListIcon className="h-4 w-4" /> <span className="ml-2 hidden sm:inline">Lista</span>
+            </button>
+            <button 
+              onClick={() => setViewMode('cards')}
+              className={`p-2 flex items-center font-bold uppercase text-xs transition-colors ${viewMode === 'cards' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}
+              title="Visualização em Cards"
+            >
+              <GridIcon className="h-4 w-4" /> <span className="ml-2 hidden sm:inline">Cards</span>
+            </button>
+          </div>
+        </div>
+
+        {viewMode === 'table' ? (
+          <div className="bg-white border-4 border-black overflow-x-auto shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
+            <table className="min-w-full border-collapse w-full">
+              <thead className="bg-amber-400 border-b-4 border-black">
+                <tr>
+                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
+                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
+                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="border-r-2 border-black w-full" />
+                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
+                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
+                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-1 whitespace-nowrap" />
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {filteredAndSortedEmendas.map((emenda, idx) => (
+                  <tr key={emenda['NÚMERO DA EMENDA'] || idx} onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
+                    className="hover:bg-amber-50 cursor-pointer border-b-2 border-black transition-colors">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200">
+                      {emenda['NÚMERO DA EMENDA']}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200">
+                      {emenda['MUNICÍPIO']}
+                    </td>
+                    <td className="px-3 py-2 text-sm text-gray-800 font-medium border-r-2 border-gray-200">
+                      {emenda.OBJETO}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-rose-700 border-r-2 border-gray-200">
+                      {emenda.ARTICULADOR || '-'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap border-r-2 border-gray-200">
+                      <span className={`inline-block border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase
+                        ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-teal-600 text-white' : 
+                          emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-amber-400 text-black' : 'bg-gray-200 text-black'}`}>
+                        {emenda.SITUAÇÃO || 'Indefinida'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-black text-black">
+                      {formatCurrency(parseCurrency(emenda.TOTAL))}
+                    </td>
+                  </tr>
+                ))}
+                {filteredAndSortedEmendas.length === 0 && (
+                  <tr><td colSpan="6" className="px-6 py-12 text-center font-bold text-gray-500 uppercase">Nenhuma emenda encontrada.</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div className="bg-gray-100 px-6 py-3 font-bold text-sm text-black flex justify-between border-t-2 border-black">
+              <span>{filteredAndSortedEmendas.length} de {emendas.length} Registros</span>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredAndSortedEmendas.map((emenda, idx) => (
+              <div key={emenda['NÚMERO DA EMENDA'] || idx} 
+                   className="border-4 border-black bg-white shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex flex-col hover:-translate-y-1 transition-transform cursor-pointer"
+                   onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}>
+                <div className="bg-amber-400 border-b-4 border-black p-3 flex justify-between items-center">
+                  <span className="font-black text-black text-lg tracking-tighter">#{emenda['NÚMERO DA EMENDA']}</span>
+                  <span className={`border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase shadow-[2px_2px_0_0_rgba(0,0,0,1)]
+                        ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-teal-600 text-white' : 
+                          emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-white text-black' : 'bg-gray-200 text-black'}`}>
                     {emenda.SITUAÇÃO || 'Indefinida'}
                   </span>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm font-black text-black">{emenda.TOTAL}</td>
-              </tr>
+                </div>
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="flex items-center mb-2">
+                    <MapPinIcon className="h-4 w-4 mr-1 text-teal-700" />
+                    <p className="text-teal-700 font-black uppercase text-sm">{emenda['MUNICÍPIO']}</p>
+                  </div>
+                  <p className="text-sm font-medium text-gray-800 line-clamp-4 flex-1">{emenda.OBJETO}</p>
+                </div>
+                <div className="bg-gray-50 border-t-4 border-black p-4 flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-500 mb-1">Articulador</p>
+                    <p className="text-rose-700 font-bold text-sm uppercase">{emenda.ARTICULADOR || '-'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase text-gray-500 mb-1">Total</p>
+                    <p className="font-black text-black text-lg leading-none">{formatCurrency(parseCurrency(emenda.TOTAL))}</p>
+                  </div>
+                </div>
+              </div>
             ))}
-            {filteredEmendas.length === 0 && (
-              <tr><td colSpan="6" className="px-6 py-12 text-center font-bold text-gray-500 uppercase">Nenhuma emenda encontrada.</td></tr>
+            {filteredAndSortedEmendas.length === 0 && (
+              <div className="col-span-full py-12 text-center font-bold text-gray-500 uppercase border-4 border-black border-dashed">
+                Nenhuma emenda encontrada.
+              </div>
             )}
-          </tbody>
-        </table>
-        <div className="bg-gray-100 px-6 py-3 font-bold text-sm text-black flex justify-between">
-          <span>{filteredEmendas.length} de {emendas.length} Registros</span>
-        </div>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const DashboardView = () => {
     const [hoveredMuni, setHoveredMuni] = useState(null);
 
-    // --- CÁLCULOS DO DASHBOARD ---
-    const totalGlobal = filteredEmendas.reduce((acc, em) => acc + parseCurrency(em.TOTAL), 0);
+    const totalGlobal = filteredAndSortedEmendas.reduce((acc, em) => acc + parseCurrency(em.TOTAL), 0);
     
-    // Agrupamento por Ano
-    const emendasPorAno = filteredEmendas.reduce((acc, em) => {
+    const emendasPorAno = filteredAndSortedEmendas.reduce((acc, em) => {
       const ano = em.ANO || 'N/A';
       acc[ano] = (acc[ano] || 0) + parseCurrency(em.TOTAL);
       return acc;
     }, {});
     const timelineData = Object.keys(emendasPorAno).sort().map(ano => ({ ano, valor: emendasPorAno[ano] }));
 
-    // Agrupamento por Região
-    const emendasPorRegiao = filteredEmendas.reduce((acc, em) => {
+    const emendasPorRegiao = filteredAndSortedEmendas.reduce((acc, em) => {
       const regiao = em.REGIÃO || 'N/A';
       acc[regiao] = (acc[regiao] || 0) + parseCurrency(em.TOTAL);
       return acc;
     }, {});
     const regiaoData = Object.keys(emendasPorRegiao).map(regiao => ({ regiao, valor: emendasPorRegiao[regiao] }))
-      .sort((a, b) => b.valor - a.valor).slice(0, 5); // Top 5
+      .sort((a, b) => b.valor - a.valor).slice(0, 5);
 
-    // Agrupamento por Município para o Mapa
     const emendasPorMuni = useMemo(() => {
       const map = {};
-      filteredEmendas.forEach(em => {
+      filteredAndSortedEmendas.forEach(em => {
         const mName = normalizeStr(em['MUNICÍPIO']);
         if(mName) map[mName] = (map[mName] || 0) + parseCurrency(em.TOTAL);
       });
       return map;
-    }, [filteredEmendas]);
+    }, [filteredAndSortedEmendas]);
 
-    // Função de cor do mapa (Gradiente Discreto Mondrian)
     const getMuniColor = (val) => {
-      if (!val || val === 0) return '#f9fafb'; // Cinza muito claro (quase branco)
-      if (val < 200000) return '#fcd34d'; // Amber leve
-      if (val < 500000) return '#fbbf24'; // Amber forte
-      if (val < 1000000) return '#0d9488'; // Teal
-      return '#be123c'; // Rose
+      if (!val || val === 0) return '#f9fafb';
+      if (val < 200000) return '#fcd34d';
+      if (val < 500000) return '#fbbf24';
+      if (val < 1000000) return '#0d9488';
+      return '#be123c';
     };
 
-    // Renderização do Mapa de SC
     const renderMap = () => {
       if (!mapGeoJson) return <div className="p-8 text-center font-bold">Carregando Mapa...</div>;
 
-      // Calcular limites do mapa para projeção simples
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       mapGeoJson.features.forEach(f => {
         const processRings = (rings) => {
@@ -514,14 +624,14 @@ export default function App() {
       const mapWidth = 800; const mapHeight = 600;
       const scaleX = mapWidth / (maxX - minX);
       const scaleY = mapHeight / (maxY - minY);
-      const scale = Math.min(scaleX, scaleY) * 0.95; // 5% margin
+      const scale = Math.min(scaleX, scaleY) * 0.95; 
       
       const offsetX = (mapWidth - (maxX - minX) * scale) / 2;
       const offsetY = (mapHeight - (maxY - minY) * scale) / 2;
 
       const project = (coord) => {
         const x = (coord[0] - minX) * scale + offsetX;
-        const y = mapHeight - ((coord[1] - minY) * scale) - offsetY; // Inverter Y
+        const y = mapHeight - ((coord[1] - minY) * scale) - offsetY;
         return `${x},${y}`;
       };
 
@@ -561,10 +671,7 @@ export default function App() {
         <FilterBar />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* COLUNA ESQUERDA: KPIs e Gráficos */}
           <div className="lg:col-span-1 space-y-8">
-            
-            {/* KPI TOTAL */}
             <div className="bg-amber-400 border-4 border-black p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] flex flex-col justify-center">
               <p className="text-black font-black uppercase text-sm tracking-widest border-b-4 border-black pb-2 mb-4">Valor Total no Filtro</p>
               <h2 className="text-4xl xl:text-5xl font-black text-black break-words leading-none">
@@ -572,13 +679,12 @@ export default function App() {
               </h2>
             </div>
 
-            {/* GRÁFICO BARRAS: REGIÃO */}
             <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
               <p className="text-black font-black uppercase text-sm tracking-widest border-b-4 border-black pb-2 mb-6">Top Regiões</p>
               <div className="space-y-4">
                 {regiaoData.length > 0 ? regiaoData.map((d, i) => {
                   const maxVal = Math.max(...regiaoData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5); // min 5% width
+                  const pct = Math.max((d.valor / maxVal) * 100, 5);
                   return (
                     <div key={d.regiao}>
                       <div className="flex justify-between text-xs font-bold uppercase mb-1">
@@ -594,7 +700,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* GRÁFICO LINHAS (Barras verticais): ANO */}
             <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
               <p className="text-black font-black uppercase text-sm tracking-widest border-b-4 border-black pb-2 mb-6">Evolução Anual</p>
               <div className="flex items-end h-40 space-x-2 border-b-2 border-l-2 border-black p-2">
@@ -613,10 +718,8 @@ export default function App() {
                 }) : <p className="text-sm font-bold text-gray-500 uppercase self-center w-full text-center">Sem dados.</p>}
               </div>
             </div>
-
           </div>
 
-          {/* COLUNA DIREITA: MAPA */}
           <div className="lg:col-span-2 bg-white border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] flex flex-col relative overflow-hidden">
             <div className="bg-teal-600 border-b-4 border-black p-4 flex justify-between items-center z-10">
               <p className="text-white font-black uppercase tracking-widest flex items-center">
@@ -642,7 +745,6 @@ export default function App() {
               )}
             </div>
           </div>
-
         </div>
       </div>
     );
@@ -653,8 +755,14 @@ export default function App() {
     const data = isEditing ? editingEmenda : selectedEmenda;
     const handleInputChange = (field, value) => setEditingEmenda(prev => ({ ...prev, [field]: value }));
 
-    const InfoField = ({ label, field, icon: IconComponent, type = 'text', linkType = null, color = 'teal' }) => {
-      const value = data[field];
+    const InfoField = ({ label, field, icon: IconComponent, type = 'text', linkType = null, color = 'teal', isCurrency = false }) => {
+      const rawValue = data[field];
+      let displayValue = rawValue;
+      
+      if (!isEditing && isCurrency) {
+        displayValue = formatCurrency(parseCurrency(rawValue));
+      }
+
       const colorClass = color === 'teal' ? 'text-teal-700' : color === 'rose' ? 'text-rose-700' : 'text-amber-600';
       
       if (isEditing) {
@@ -663,10 +771,10 @@ export default function App() {
             <label className={`block text-xs font-black uppercase mb-1 ${colorClass}`}>{label}</label>
             {type === 'textarea' ? (
               <textarea className="w-full p-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-medium"
-                rows="3" value={value || ''} onChange={(e) => handleInputChange(field, e.target.value)} />
+                rows="3" value={rawValue || ''} onChange={(e) => handleInputChange(field, e.target.value)} />
             ) : (
               <input type="text" className="w-full p-2 bg-gray-50 border-2 border-black rounded-none focus:outline-none focus:border-rose-700 font-medium"
-                value={value || ''} onChange={(e) => handleInputChange(field, e.target.value)} />
+                value={rawValue || ''} onChange={(e) => handleInputChange(field, e.target.value)} />
             )}
           </div>
         );
@@ -676,10 +784,10 @@ export default function App() {
           <label className={`block text-xs font-black uppercase tracking-wider mb-1 flex items-center ${colorClass}`}>
             {IconComponent && <IconComponent className="h-4 w-4 mr-1" />} {label}
           </label>
-          <div className="text-black font-medium text-sm">
-            {value || <span className="text-gray-400 italic">N/A</span>}
-            {linkType && value && (
-               <button onClick={() => handleEntityClick(linkType, value)} className="ml-2 text-[10px] bg-amber-400 text-black border border-black px-1 uppercase font-bold hover:bg-amber-500">
+          <div className="text-black font-medium text-sm break-words">
+            {displayValue || <span className="text-gray-400 italic">N/A</span>}
+            {linkType && rawValue && (
+               <button onClick={() => handleEntityClick(linkType, rawValue)} className="ml-2 text-[10px] bg-amber-400 text-black border border-black px-1 uppercase font-bold hover:bg-amber-500">
                  Filtrar
                </button>
             )}
@@ -738,8 +846,8 @@ export default function App() {
             <div className="space-y-3 bg-gray-50 border-2 border-black p-4">
               <div className="bg-black text-white font-black uppercase text-sm py-1 px-3 inline-block border-2 border-black -mt-8 mb-4">Financeiro / Status</div>
               <InfoField label="Situação" field="SITUAÇÃO" linkType="situacao" color="rose" />
-              <InfoField label="Total Previsto" field="TOTAL" color="teal" />
-              <InfoField label="Valor Pago" field="PAGO" color="teal" />
+              <InfoField label="Total Previsto" field="TOTAL" color="teal" isCurrency={true} />
+              <InfoField label="Valor Pago" field="PAGO" color="teal" isCurrency={true} />
               <InfoField label="Esfera de Aplicação" field="ESFERA DE APLICAÇÃO" />
               <InfoField label="Unidade Orçamentária" field="UNIDADE ORÇAMENTÁRIA" />
             </div>
@@ -787,7 +895,7 @@ export default function App() {
           <div className="p-8 space-y-8">
             <div className="bg-amber-400 border-4 border-black text-black p-4 flex items-start shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
               <AlertTriangleIcon className="h-6 w-6 mr-3 flex-shrink-0" />
-              <p className="text-sm font-bold">Modo de Segurança Máxima Ativado. A URL da planilha Google agora é gerenciada exclusivamente pelo Servidor (Backend). Você não precisa mais configurá-la aqui.</p>
+              <p className="text-sm font-bold">Modo de Segurança Máxima Ativado. A URL da planilha Google agora é gerenciada exclusivamente pelo Servidor (Backend).</p>
             </div>
             <div className="border-2 border-black p-6 bg-gray-50">
               <h3 className="text-xl font-black uppercase text-teal-700 border-b-4 border-black pb-2 mb-4 flex items-center"><UploadCloudIcon className="h-6 w-6 mr-2" /> Importação CSV Manual</h3>
