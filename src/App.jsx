@@ -292,7 +292,6 @@ export default function App() {
         }
 
         if (sortConfig.key === 'NÚMERO DA EMENDA') {
-           // Assume formato num/ano (ex: 2071/2023)
            const partsA = (String(valA) || '').split('/');
            const partsB = (String(valB) || '').split('/');
            const numA = parseInt(partsA[0]) || 0;
@@ -369,7 +368,7 @@ export default function App() {
         <div className="flex justify-between h-16">
           <div className="flex items-center cursor-pointer group" onClick={() => setCurrentView('list')}>
             <img 
-              src="/icon-192x192.png" 
+              src="https://raw.githubusercontent.com/killuixo/tabulum-sig-emendas/refs/heads/main/icon-192.png" 
               alt="Ícone TABULUM" 
               className="w-10 h-10 mr-3 object-contain transition-transform group-hover:scale-110"
               onError={(e) => { e.target.style.display = 'none'; }} 
@@ -432,7 +431,7 @@ export default function App() {
     const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
       const isActive = sortConfig?.key === sortKey;
       return (
-        <th className={`px-3 py-3 text-left text-xs font-black text-black uppercase cursor-pointer hover:bg-amber-500 transition-colors ${extraClasses}`}
+        <th className={`py-3 text-left text-xs font-black text-black uppercase cursor-pointer hover:bg-amber-500 transition-colors ${extraClasses}`}
             onClick={() => requestSort(sortKey)}>
           <div className="flex items-center space-x-1">
             <span>{label}</span>
@@ -476,12 +475,13 @@ export default function App() {
             <table className="min-w-full border-collapse w-full">
               <thead className="bg-amber-400 border-b-4 border-black">
                 <tr>
-                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
-                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
-                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="border-r-2 border-black w-full" />
-                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
-                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="border-r-2 border-black w-1 whitespace-nowrap" />
-                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-1 whitespace-nowrap" />
+                  {/* Utilizando w-[1%] whitespace-nowrap para encolher colunas secundárias e w-full no OBJETO */}
+                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
+                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
+                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="border-r-2 border-black w-full px-4" />
+                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
+                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="border-r-2 border-black w-[1%] whitespace-nowrap px-3" />
+                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-[1%] whitespace-nowrap px-3" />
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -489,25 +489,23 @@ export default function App() {
                   <tr key={emenda['NÚMERO DA EMENDA'] || idx} onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
                     className="hover:bg-amber-50 cursor-pointer border-b-2 border-black transition-colors">
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200 w-1">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-black border-r-2 border-gray-200 w-[1%]">
                       {emenda['NÚMERO DA EMENDA']}
                     </td>
                     
-                    {/* Município sem caixa, apenas com texto Teal para economizar espaço */}
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200 w-1">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold uppercase text-teal-700 border-r-2 border-gray-200 w-[1%]">
                       {emenda['MUNICÍPIO']}
                     </td>
                     
-                    {/* Objeto expande o máximo que der */}
-                    <td className="px-3 py-2 text-sm text-gray-800 font-medium border-r-2 border-gray-200">
+                    <td className="px-4 py-2 text-sm text-gray-800 font-medium border-r-2 border-gray-200 w-full">
                       {emenda.OBJETO}
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-rose-700 border-r-2 border-gray-200 w-1">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-rose-700 border-r-2 border-gray-200 w-[1%]">
                       {emenda.ARTICULADOR || '-'}
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap border-r-2 border-gray-200 w-1">
+                    <td className="px-3 py-2 whitespace-nowrap border-r-2 border-gray-200 w-[1%]">
                       <span className={`inline-block border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase
                         ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-teal-600 text-white' : 
                           emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-amber-400 text-black' : 'bg-gray-200 text-black'}`}>
@@ -515,7 +513,7 @@ export default function App() {
                       </span>
                     </td>
                     
-                    <td className="px-3 py-2 whitespace-nowrap text-sm font-black text-black w-1">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm font-black text-black w-[1%]">
                       {formatCurrency(parseCurrency(emenda.TOTAL))}
                     </td>
 
@@ -956,7 +954,6 @@ export default function App() {
         {currentView === 'settings' && <SettingsView />}
       </main>
 
-      {/* MODAL DE LOGIN */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white border-4 border-black shadow-[16px_16px_0_0_rgba(0,0,0,1)] p-8 w-full max-w-sm m-4 relative">
@@ -971,7 +968,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white border-4 border-black shadow-[16px_16px_0_0_rgba(0,0,0,1)] p-8 w-full max-w-md m-4 relative">
