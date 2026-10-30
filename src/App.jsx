@@ -1,15 +1,29 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
-const Icon = ({ path, className = "w-6 h-6", onClick, size, style }) => (
-  <svg onClick={onClick} style={{ width: size, height: size, ...style }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter" className={className}>
+const Icon = ({ path, className = "w-5 h-5", onClick, size, style }) => (
+  <svg
+    onClick={onClick}
+    style={{ width: size, height: size, ...style }}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="square"
+    strokeLinejoin="miter"
+    className={className}
+  >
     {path}
   </svg>
 );
+
 const SearchIcon = (p) => <Icon {...p} path={<><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></>} />;
 const MapPinIcon = (p) => <Icon {...p} path={<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></>} />;
 const MapIcon = (p) => <Icon {...p} path={<><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></>} />;
 const UserIcon = (p) => <Icon {...p} path={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>} />;
 const TagIcon = (p) => <Icon {...p} path={<><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></>} />;
+const BuildingIcon = (p) => <Icon {...p} path={<><rect width="16" height="20" x="4" y="2" rx="1"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></>} />;
+const LayersIcon = (p) => <Icon {...p} path={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>} />;
+const InfoIcon = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>} />;
 const EditIcon = (p) => <Icon {...p} path={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>} />;
 const SaveIcon = (p) => <Icon {...p} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />;
 const XIcon = (p) => <Icon {...p} path={<><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>} />;
@@ -47,7 +61,7 @@ function parseCSV(text) {
       else if (char === ',') { row.push(cell.trim()); cell = ''; }
       else if (char === '\n' || char === '\r') {
         row.push(cell.trim()); rows.push(row); row = []; cell = '';
-        if (char === '\r' && csvText[i + 1] === '\n') i++; 
+        if (char === '\r' && csvText[i + 1] === '\n') i++;
       } else { cell += char; }
     }
   }
@@ -59,17 +73,74 @@ function parseCSV(text) {
 function parseCurrency(str) {
   if (!str) return 0;
   if (typeof str === 'number') return str;
-  const cleanStr = String(str).replace(/[R$\s.]/g, '').replace(',', '.');
-  return parseFloat(cleanStr) || 0;
+  const s = String(str).replace(/R\$\s?/g, '').trim();
+  if (!s) return 0;
+  if (s.includes(',')) {
+    return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+  return parseFloat(s) || 0;
 }
 
 function formatCurrency(num) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num || 0);
 }
 
 function normalizeStr(str) {
   if (!str) return '';
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+  return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+}
+
+const GENERIC_RAZAO_TERMS = [
+  'PREFEITURAS / MUNICIPIOS',
+  'FUNDOS',
+  'UNIDADES GESTORAS',
+  'ENTIDADE PRIVADA SEM FINS LUCRATIVOS'
+];
+
+// Recupera a Modalidade (da coluna MODALIDADE ou inferida a partir de ESFERA DE APLICAÇÃO / OBJETO)
+function resolveModalidade(emenda) {
+  if (!emenda) return '';
+  const mod = String(emenda.MODALIDADE || '').trim();
+  if (mod) return mod;
+
+  const esfera = String(emenda['ESFERA DE APLICAÇÃO'] || '').toUpperCase();
+  const obj = String(emenda.OBJETO || '').toUpperCase();
+
+  if (esfera.includes('TRANSFERÊNCIA ESPECIAL') || esfera.includes('TRANSF. ESPECIAL') || obj.startsWith('TRANSFERÊNCIA ESPECIAL')) {
+    return 'Transferência Especial';
+  }
+  if (esfera.includes('ÓRGÃO ESTADUAL') || obj.startsWith('EXECUÇÃO DIRETA')) {
+    return 'Execução Direta';
+  }
+  if (esfera.includes('ENTIDADE') || obj.startsWith('CONVÊNIO')) {
+    return 'Convênio';
+  }
+  return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
+}
+
+// Recupera o nome específico da Entidade / Razão Social (da coluna O ou extraído como fallback do OBJETO)
+function resolveEntidade(emenda) {
+  if (!emenda) return '';
+  const rawRazao = String(emenda['RAZÃO SOCIAL'] || '').trim();
+  if (rawRazao && !GENERIC_RAZAO_TERMS.includes(normalizeStr(rawRazao))) {
+    return rawRazao;
+  }
+
+  const obj = String(emenda.OBJETO || '').trim();
+  if (!obj) return '';
+
+  const regexEntidade = /(1º\s*BPMA\s*-\s*1º\s*Batalhão de Polícia Militar Ambiental|2º\s*BPMA\s*–\s*2º\s*Batalhão de Polícia Militar Ambiental|\d+º\s*Batalhão(?:\s+de)?\s+Bombeiro(?:s)?\s+Militar(?:\s*\([^)]+\))?|Corpo de Bombeiros(?:\s+Militar)?\s+de\s+[A-ZÀ-Úa-zà-ú\s]+|Bombeiros Militar de Garopaba e são José|CBM\/SC|Polícia Militar de Santa Catarina|Orquestra Sinfônica de Santa Catarina|UDESC\/CEART|CEART-\s*UDESC|CERES-UDESC|LATEC\/UDESC|MESC-UDESC|FAED-UDESC|CEPED-UDESC|CEPED|Grupo de Pesquisa[^,\.;:]+da UDESC|Museu Digital de Artes Cênicas na UDESC|Museu da Escola Catarinense\s*[–-]\s*MESC-UDESC|Laboratório de Soluções em Tecnologia\s*\(LATEC\/UDESC\)|ESAG KIDS|NUDHA|Centro de Ciências Agrarias da UFSC\s*-\s*CCA|Células de Consumidores Responsáveis\s*\(CCR\)|(?:Escola de Samba|G\.R\.E\.S\.)\s+[A-ZÀ-Ú0-9][^,\.;]+|Escola\s+(?:Municipal|Estadual|Básica|Ambiental|Socio\s*Ambiental|do\s+Rio\s+e\s+Mar|do\s+Mar|Isolada|Livre|para\s+Educação\s+Quilombola)[^,\.;]+|Hospital\s+(?:Ana\s+Schmitt|Governador\s+Celso\s+Ramos(?:\s*\(HGCR\))?|São\s+Camilo|de\s+Imaruí|Frei\s+Rogério(?:\s+de\s+Anita\s+Garibaldi)?)|Museu\s+(?:Histórico|Comunitário|da\s+Escola|Digital)[^,\.;]+|Instituto\s+[A-ZÀ-Ú0-9][^,\.;]+|Intituto\s+[A-ZÀ-Ú0-9][^,\.;]+|Associação\s+[A-ZÀ-Ú0-9][^,\.;]+|Fundação\s+[A-ZÀ-Ú0-9][^,\.;]+|Consórcio\s+Intermunicipal[^,\.;]+|Conselho\s+Municipal[^,\.;]+|Centro\s+(?:Público|de\s+Formação|de\s+Saúde|de\s+Atenção\s+Psicossocial|de\s+Ciências)[^,\.;]+|CAPS(?:\s+AD|\s+II)?\s+(?:do\s+município\s+de\s+|de\s+|Ponta\s+do\s+Coral)[A-ZÀ-Úa-zà-ú\s]*|UBS\s+da\s+comunidade\s+[^,\.;]+|Serviço\s+Residencial\s+Terapeutico[^,\.;]+|Comissão\s+de\s+Práticas\s+Integrativas[^,\.;]+|Parque\s+(?:Ecológico|Natural\s+Municipal|do\s+Agricultor|das\s+Dunas)[^,\.;]+|Diretoria\s+de\s+Bem-estar\s+Animal\s+da\s+Prefeitura\s+Municipal\s+de\s+Florianópolis|Fundo\s+Estadual\s+de\s+Segurança\s+Alimentar[^,\.;]+|Cuidatoria\s+Hub\s+do\s+Terceiro\s+Setor|Casa\s+Lar\s+Luz\s+do\s+Caminho|ONG\s+[A-ZÀ-Ú0-9][^,\.;]+|ACUSTRA|SERTE|ICOM|CEPESI|FANFARRA DA PONTE|AfroFeira Ação Zumbi|EnCenAção Negra|FAM\s+Florianópolis\s+Audiovisual\s+Mercosul|Blocos\s+Afro\s+de\s+Florianópolis|Quilombo\s+Invernada\s+dos\s+Negros|aldeia\s+indígena\s+Tekoa\s+Marangatu|comunidade\s+Kondá|Casarão\s+e\s+Engenho\s+dos\s+Andrade|Cozinhas\s+Solidarias|Veleiro\s+Eco|Lagoa\s+Viva|UDESC|FAPESC|UFSC)/i;
+
+  const match = obj.match(regexEntidade);
+  return match ? match[1].trim() : '';
+}
+
+function resolveAno(emenda) {
+  if (!emenda) return '';
+  if (emenda.ANO) return String(emenda.ANO).trim();
+  const num = String(emenda['NÚMERO DA EMENDA'] || '');
+  const parts = num.split('/');
+  return parts.length > 1 ? parts[1].trim() : '';
 }
 
 export default function App() {
@@ -78,22 +149,25 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('admin');
   const [mapGeoJson, setMapGeoJson] = useState(null);
-  
-  const [currentView, setCurrentView] = useState('list'); 
-  const [viewMode, setViewMode] = useState('table'); 
+
+  const [currentView, setCurrentView] = useState('list');
+  const [viewMode, setViewMode] = useState('table');
   const [selectedEmenda, setSelectedEmenda] = useState(null);
   const [editingEmenda, setEditingEmenda] = useState(null);
-  
+
+  // Filtros Universais de Multiseleção + Busca Livre
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterModalidades, setFilterModalidades] = useState([]);
+  const [filterEntidades, setFilterEntidades] = useState([]);
   const [filterArticuladores, setFilterArticuladores] = useState([]);
   const [filterMunicipios, setFilterMunicipios] = useState([]);
   const [filterRegioes, setFilterRegioes] = useState([]);
   const [filterTemas, setFilterTemas] = useState([]);
   const [filterSituacoes, setFilterSituacoes] = useState([]);
+  const [filterAnos, setFilterAnos] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
   const [openDropdown, setOpenDropdown] = useState(null);
-
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -104,18 +178,33 @@ export default function App() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  const articuladores = useMemo(() => [...new Set(emendas.map(e => e.ARTICULADOR).filter(Boolean))].sort(), [emendas]);
-  const municipios = useMemo(() => [...new Set(emendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort(), [emendas]);
-  const regioes = useMemo(() => [...new Set(emendas.map(e => e.REGIÃO).filter(Boolean))].sort(), [emendas]);
-  const temas = useMemo(() => [...new Set(emendas.map(e => e.TEMA).filter(Boolean))].sort(), [emendas]);
-  const situacoes = useMemo(() => [...new Set(emendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort(), [emendas]);
+  // Enriquecimento leve em memória para garantir Modalidade, Razão Social e Ano consistentes
+  const enrichedEmendas = useMemo(() => {
+    return emendas.map(e => ({
+      ...e,
+      _modalidade: resolveModalidade(e),
+      _entidade: resolveEntidade(e),
+      _ano: resolveAno(e)
+    }));
+  }, [emendas]);
+
+  const modalidades = useMemo(() => [...new Set(enrichedEmendas.map(e => e._modalidade).filter(Boolean))].sort(), [enrichedEmendas]);
+  const entidades = useMemo(() => [...new Set(enrichedEmendas.map(e => e._entidade).filter(Boolean))].sort(), [enrichedEmendas]);
+  const articuladores = useMemo(() => [...new Set(enrichedEmendas.map(e => e.ARTICULADOR).filter(Boolean))].sort(), [enrichedEmendas]);
+  const municipios = useMemo(() => [...new Set(enrichedEmendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort(), [enrichedEmendas]);
+  const regioes = useMemo(() => [...new Set(enrichedEmendas.map(e => e.REGIÃO).filter(Boolean))].sort(), [enrichedEmendas]);
+  const temas = useMemo(() => [...new Set(enrichedEmendas.map(e => e.TEMA).filter(Boolean))].sort(), [enrichedEmendas]);
+  const situacoes = useMemo(() => [...new Set(enrichedEmendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort(), [enrichedEmendas]);
+  const anos = useMemo(() => [...new Set(enrichedEmendas.map(e => e._ano).filter(Boolean))].sort(), [enrichedEmendas]);
 
   useEffect(() => {
     document.title = "TABULUM - Emendas";
 
     const loadData = async () => {
       const storedEmendas = localStorage.getItem('tabulum_emendas_data');
-      if (storedEmendas) setEmendas(JSON.parse(storedEmendas));
+      if (storedEmendas) {
+        try { setEmendas(JSON.parse(storedEmendas)); } catch (e) {}
+      }
       const storedAuth = sessionStorage.getItem('tabulum_emendas_auth');
       if (storedAuth === 'true') setIsAdmin(true);
       const storedPass = localStorage.getItem('tabulum_emendas_pass');
@@ -144,15 +233,22 @@ export default function App() {
       .catch(err => console.error("Erro ao carregar mapa:", err));
   }, []);
 
-  const resetToFrontPage = () => {
-    setCurrentView('list');
-    setViewMode('table');
+  const clearAllFilters = () => {
     setSearchTerm('');
+    setFilterModalidades([]);
+    setFilterEntidades([]);
     setFilterArticuladores([]);
     setFilterMunicipios([]);
     setFilterRegioes([]);
     setFilterTemas([]);
     setFilterSituacoes([]);
+    setFilterAnos([]);
+  };
+
+  const resetToFrontPage = () => {
+    setCurrentView('list');
+    setViewMode('table');
+    clearAllFilters();
     setSortConfig({ key: null, direction: 'asc' });
   };
 
@@ -189,18 +285,30 @@ export default function App() {
   const handleSaveEmenda = async () => {
     if (!editingEmenda) return;
     try {
-      const updatedEmendas = emendas.map(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'] ? editingEmenda : e);
-      if (!emendas.some(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'])) {
-         updatedEmendas.push(editingEmenda);
+      const cleanToSave = { ...editingEmenda };
+      delete cleanToSave._modalidade;
+      delete cleanToSave._entidade;
+      delete cleanToSave._ano;
+
+      const updatedEmendas = emendas.map(e =>
+        e['NÚMERO DA EMENDA'] === cleanToSave['NÚMERO DA EMENDA'] ? cleanToSave : e
+      );
+      if (!emendas.some(e => e['NÚMERO DA EMENDA'] === cleanToSave['NÚMERO DA EMENDA'])) {
+        updatedEmendas.push(cleanToSave);
       }
       saveEmendasLocally(updatedEmendas);
-      setSelectedEmenda(editingEmenda);
+      setSelectedEmenda({
+        ...cleanToSave,
+        _modalidade: resolveModalidade(cleanToSave),
+        _entidade: resolveEntidade(cleanToSave),
+        _ano: resolveAno(cleanToSave)
+      });
       setEditingEmenda(null);
       setCurrentView('detail');
 
       fetch('/api/emendas', {
         method: 'POST',
-        body: JSON.stringify({ action: 'update', data: editingEmenda }),
+        body: JSON.stringify({ action: 'update', data: cleanToSave }),
         headers: { 'Content-Type': 'application/json' }
       }).catch(err => console.error("Erro ao enviar para o servidor:", err));
     } catch (error) {
@@ -260,7 +368,7 @@ export default function App() {
   const handleLogout = () => {
     setIsAdmin(false);
     sessionStorage.removeItem('tabulum_emendas_auth');
-  }
+  };
 
   const confirmAction = (title, message, onConfirm) => {
     setConfirmModal({
@@ -273,12 +381,17 @@ export default function App() {
   };
 
   const handleEntityClick = (type, value) => {
-    resetToFrontPage(); 
+    if (!value) return;
+    setCurrentView('list');
+    clearAllFilters();
+    if (type === 'modalidade') setFilterModalidades([value]);
+    if (type === 'entidade') setFilterEntidades([value]);
     if (type === 'articulador') setFilterArticuladores([value]);
     if (type === 'municipio') setFilterMunicipios([value]);
     if (type === 'regiao') setFilterRegioes([value]);
     if (type === 'tema') setFilterTemas([value]);
     if (type === 'situacao') setFilterSituacoes([value]);
+    if (type === 'ano') setFilterAnos([value]);
   };
 
   const requestSort = (key) => {
@@ -290,14 +403,28 @@ export default function App() {
   };
 
   const filteredAndSortedEmendas = useMemo(() => {
-    let result = emendas.filter(e => {
+    let result = enrichedEmendas.filter(e => {
       const matchesSearch = searchTerm === '' || JSON.stringify(e).toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesModalidade = filterModalidades.length === 0 || filterModalidades.includes(e._modalidade);
+      const matchesEntidade = filterEntidades.length === 0 || filterEntidades.includes(e._entidade);
       const matchesArticulador = filterArticuladores.length === 0 || filterArticuladores.includes(e.ARTICULADOR);
       const matchesMunicipio = filterMunicipios.length === 0 || filterMunicipios.includes(e['MUNICÍPIO']);
       const matchesRegiao = filterRegioes.length === 0 || filterRegioes.includes(e.REGIÃO);
       const matchesTema = filterTemas.length === 0 || filterTemas.includes(e.TEMA);
       const matchesSituacao = filterSituacoes.length === 0 || filterSituacoes.includes(e.SITUAÇÃO);
-      return matchesSearch && matchesArticulador && matchesMunicipio && matchesRegiao && matchesTema && matchesSituacao;
+      const matchesAno = filterAnos.length === 0 || filterAnos.includes(e._ano);
+
+      return (
+        matchesSearch &&
+        matchesModalidade &&
+        matchesEntidade &&
+        matchesArticulador &&
+        matchesMunicipio &&
+        matchesRegiao &&
+        matchesTema &&
+        matchesSituacao &&
+        matchesAno
+      );
     });
 
     if (sortConfig.key) {
@@ -305,24 +432,24 @@ export default function App() {
         let valA = a[sortConfig.key];
         let valB = b[sortConfig.key];
 
-        if (sortConfig.key === 'TOTAL') {
+        if (sortConfig.key === 'TOTAL' || sortConfig.key === 'PAGO') {
           valA = parseCurrency(valA);
           valB = parseCurrency(valB);
           return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
         }
 
         if (sortConfig.key === 'NÚMERO DA EMENDA') {
-           const partsA = (String(valA) || '').split('/');
-           const partsB = (String(valB) || '').split('/');
-           const numA = parseInt(partsA[0]) || 0;
-           const yearA = parseInt(partsA[1]) || 0;
-           const numB = parseInt(partsB[0]) || 0;
-           const yearB = parseInt(partsB[1]) || 0;
+          const partsA = (String(valA) || '').split('/');
+          const partsB = (String(valB) || '').split('/');
+          const numA = parseInt(partsA[0]) || 0;
+          const yearA = parseInt(partsA[1]) || 0;
+          const numB = parseInt(partsB[0]) || 0;
+          const yearB = parseInt(partsB[1]) || 0;
 
-           if (yearA !== yearB) {
-             return sortConfig.direction === 'asc' ? yearA - yearB : yearB - yearA;
-           }
-           return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+          if (yearA !== yearB) {
+            return sortConfig.direction === 'asc' ? yearA - yearB : yearB - yearA;
+          }
+          return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
         }
 
         valA = String(valA || '').toLowerCase();
@@ -334,779 +461,57 @@ export default function App() {
     }
 
     return result;
-  }, [emendas, searchTerm, filterArticuladores, filterMunicipios, filterRegioes, filterTemas, filterSituacoes, sortConfig]);
+  }, [
+    enrichedEmendas,
+    searchTerm,
+    filterModalidades,
+    filterEntidades,
+    filterArticuladores,
+    filterMunicipios,
+    filterRegioes,
+    filterTemas,
+    filterSituacoes,
+    filterAnos,
+    sortConfig
+  ]);
 
   const handleExportCSV = () => {
     if (!filteredAndSortedEmendas || filteredAndSortedEmendas.length === 0) {
       alert("Nenhum dado disponível para exportar.");
       return;
     }
-    
-    // Obter todas as chaves únicas possíveis do dataset para garantir colunas consistentes
-    const headers = Array.from(new Set(filteredAndSortedEmendas.flatMap(Object.keys)));
-    
+
+    const cleanRows = filteredAndSortedEmendas.map(r => {
+      const copy = { ...r };
+      copy['MODALIDADE'] = copy['MODALIDADE'] || copy._modalidade || '';
+      copy['RAZÃO SOCIAL'] = copy['RAZÃO SOCIAL'] || copy._entidade || '';
+      copy['ANO'] = copy['ANO'] || copy._ano || '';
+      delete copy._modalidade;
+      delete copy._entidade;
+      delete copy._ano;
+      return copy;
+    });
+
+    const headers = Array.from(new Set(cleanRows.flatMap(Object.keys)));
     const csvRows = [];
     csvRows.push(headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','));
-    
-    filteredAndSortedEmendas.forEach(row => {
+
+    cleanRows.forEach(row => {
       const values = headers.map(header => {
         const val = row[header] !== undefined && row[header] !== null ? String(row[header]) : '';
-        return `"${val.replace(/"/g, '""')}"`;
-      });
-      csvRows.push(values.join(','));
-    });
-    
-    const csvString = "\uFEFF" + csvRows.join('\n'); // Utiliza BOM para que o Excel leia UTF-8
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "emendas_filtradas.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+        return `"${val.replace(/"/g, '""')}"`; }); csvRows.push(values.join(',')); });  const csvString = "\uFEFF" + csvRows.join('\n'); const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.setAttribute("download", "emendas_filtradas.csv"); document.body.appendChild(link); link.click(); document.body.removeChild(link); };  // Estilo de Badge para Modalidade (Paleta Mondrian Suave) const getModalidadeBadgeStyle = (mod) => { const m = String(mod \vert{}\vert{} '').toLowerCase(); if (m.includes('convênio') \vert{}\vert{} m.includes('convenio') \vert{}\vert{} m.includes('entidade')) { return 'bg-rose-50 text-rose-800 border-rose-700/60'; } if (m.includes('transferência') \vert{}\vert{} m.includes('transferencia')) { return 'bg-teal-50 text-teal-800 border-teal-700/60'; } if (m.includes('execução') \vert{}\vert{} m.includes('execucao') \vert{}\vert{} m.includes('órgão')) { return 'bg-amber-50 text-amber-900 border-amber-600/60'; } return 'bg-stone-100 text-stone-700 border-stone-400'; };  // Estilo de Badge para Situação SEF/SC const getSituacaoBadgeStyle = (sit) => { const s = String(sit \vert{}\vert{} '').toLowerCase(); if (s === 'pago') { return 'bg-teal-700 text-white border-stone-800'; } if (s.includes('parcial')) { return 'bg-teal-50 text-teal-900 border-teal-700'; } if (s.includes('pagar')) { return 'bg-amber-200/80 text-stone-900 border-stone-800'; } return 'bg-stone-100 text-stone-700 border-stone-400'; };  const MultiSelect = ({ id, label, options, selected, onChange }) => { const isOpen = openDropdown === id; const [innerSearch, setInnerSearch] = useState('');  const handleToggleDropdown = (e) => { e.stopPropagation(); setOpenDropdown(isOpen ? null : id); };  const handleToggleOption = (e, opt) => { e.stopPropagation(); if (selected.includes(opt)) { onChange(selected.filter(i => i !== opt)); } else { onChange([...selected, opt]); } };  const handleClear = (e) => { e.stopPropagation(); onChange([]); };  let displayText = `${label}: Todos`;
+    if (selected.length === 1) displayText = `${label}:${selected[0]}`;
+    else if (selected.length > 1) displayText = `${label}:${selected.length}`;
 
-  const MultiSelect = ({ id, label, options, selected, onChange }) => {
-    const isOpen = openDropdown === id;
-    
-    const handleToggleDropdown = (e) => {
-      e.stopPropagation();
-      setOpenDropdown(isOpen ? null : id);
-    };
-
-    const handleToggleOption = (e, opt) => {
-      e.stopPropagation();
-      if (selected.includes(opt)) {
-        onChange(selected.filter(i => i !== opt));
-      } else {
-        onChange([...selected, opt]);
-      }
-    };
-
-    const handleClear = (e) => {
-      e.stopPropagation();
-      onChange([]);
-    };
-
-    let displayText = `${label}: Todos`;
-    if (selected.length === 1) displayText = `${label}: ${selected[0]}`;
-    else if (selected.length > 1) displayText = `${label}: ${selected.length} itens`;
+    const filteredOptions = options.filter(o =>
+      String(o).toLowerCase().includes(innerSearch.toLowerCase())
+    );
 
     return (
       <div className="relative">
-        <div onClick={handleToggleDropdown} 
-             className="px-3 py-2 bg-white border-2 border-black focus:outline-none focus:border-blue-600 font-bold uppercase text-xs cursor-pointer flex justify-between items-center min-w-[160px] max-w-[200px]">
-          <span className="truncate pr-2 text-black" title={displayText}>{displayText}</span>
-          <div className="flex items-center space-x-1 flex-shrink-0">
-             {selected.length > 0 && (
-                 <div onClick={handleClear} className="hover:text-red-600 bg-gray-100 rounded p-0.5" title="Limpar filtro">
-                     <XIcon className="w-3 h-3 text-black" />
-                 </div>
-             )}
-             <ChevronDownIcon className="w-4 h-4 text-black" />
-          </div>
-        </div>
-        {isOpen && (
-          <div className="absolute z-30 top-full left-0 mt-1 w-64 max-h-64 overflow-y-auto bg-white border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] flex flex-col p-2"
-               onClick={(e) => e.stopPropagation()}>
-             {options.map(opt => (
-                 <label key={opt} className="flex items-center space-x-2 cursor-pointer hover:bg-yellow-100 p-1.5 transition-colors">
-                     <input
-                        type="checkbox"
-                        className="accent-blue-600 w-4 h-4 border-2 border-black cursor-pointer"
-                        checked={selected.includes(opt)}
-                        onChange={(e) => handleToggleOption(e, opt)}
-                     />
-                     <span className="text-xs font-bold uppercase truncate flex-1 text-black">{opt}</span>
-                 </label>
-             ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const FilterBar = () => {
-    const hasFilters = searchTerm || filterArticuladores.length > 0 || filterMunicipios.length > 0 || filterRegioes.length > 0 || filterTemas.length > 0 || filterSituacoes.length > 0;
-    
-    return (
-      <div className="bg-white p-4 border-4 border-black mb-4 flex flex-wrap gap-4 items-center shadow-[6px_6px_0_0_rgba(0,0,0,1)] print:hidden">
-        <div className="flex-1 min-w-[150px] relative">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-black" />
-          <input 
-            type="text" 
-            placeholder="Busca livre..." 
-            className="w-full pl-10 pr-4 py-2 bg-white border-2 border-black rounded-none focus:outline-none focus:border-blue-600 font-medium text-black placeholder-gray-500"
-            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        
-        <MultiSelect id="art" label="Articulador" options={articuladores} selected={filterArticuladores} onChange={setFilterArticuladores} />
-        <MultiSelect id="mun" label="Município" options={municipios} selected={filterMunicipios} onChange={setFilterMunicipios} />
-        <MultiSelect id="reg" label="Região" options={regioes} selected={filterRegioes} onChange={setFilterRegioes} />
-        <MultiSelect id="tem" label="Tema" options={temas} selected={filterTemas} onChange={setFilterTemas} />
-        <MultiSelect id="sit" label="Situação" options={situacoes} selected={filterSituacoes} onChange={setFilterSituacoes} />
-
-        {hasFilters && (
-          <button onClick={() => { setSearchTerm(''); setFilterArticuladores([]); setFilterMunicipios([]); setFilterRegioes([]); setFilterTemas([]); setFilterSituacoes([]); }}
-            className="bg-red-600 p-2 text-white border-2 border-black hover:bg-red-700 transition-colors" title="Limpar todos os filtros">
-            <XIcon className="h-5 w-5" />
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  const Navbar = () => (
-    <nav className="bg-white border-b-4 border-black sticky top-0 z-20 print:hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center cursor-pointer group" onClick={resetToFrontPage} title="Voltar ao Início">
-            <img 
-              src="https://raw.githubusercontent.com/killuixo/tabulum-sig-emendas/refs/heads/main/icon-192.png" 
-              alt="Ícone TABULUM" 
-              className="w-10 h-10 mr-3 object-contain transition-transform group-hover:scale-110"
-              onError={(e) => { e.target.style.display = 'none'; }} 
-            />
-            <span className="font-black text-2xl tracking-tighter text-black hidden sm:block">TABULUM - Emendas</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            {isAdmin ? (
-              <>
-                <div className="hidden md:flex items-center bg-blue-600 border-2 border-black px-3 py-1 text-sm font-bold text-white shadow-[2px_2px_0_0_rgba(0,0,0,1)]">
-                  <UserIcon className="h-4 w-4 mr-2" /> ADMIN
-                </div>
-                <button onClick={() => setCurrentView('settings')} className="bg-yellow-400 border-2 border-black p-2 hover:bg-yellow-500 shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none" title="Ajustes">
-                  <SettingsIcon className="h-5 w-5 text-black" />
-                </button>
-                <button onClick={handleLogout} className="bg-red-600 border-2 border-black p-2 hover:bg-red-700 shadow-[2px_2px_0_0_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none" title="Sair">
-                  <LogOutIcon className="h-5 w-5 text-white" />
-                </button>
-              </>
-            ) : (
-              <button onClick={() => setShowLoginModal(true)} className="flex items-center bg-yellow-400 border-2 border-black px-4 py-2 font-black text-black uppercase shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:bg-yellow-500 transition-transform active:translate-y-1 active:shadow-none">
-                <LogInIcon className="h-4 w-4 mr-2" /> Editar
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </nav>
-  );
-
-  const HeaderSwitcher = ({ title }) => (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0 print:hidden">
-      <div className="flex items-center space-x-4">
-        <h1 className="text-3xl font-black text-black uppercase tracking-tight">{title}</h1>
-        <div className="flex border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-          <button 
-            onClick={() => setCurrentView('list')}
-            className={`p-2 flex items-center font-bold uppercase text-xs border-r-2 border-black transition-colors ${currentView === 'list' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}
-          >
-            <TableIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Quadro</span>
-          </button>
-          <button 
-            onClick={() => setCurrentView('dashboard')}
-            className={`p-2 flex items-center font-bold uppercase text-xs transition-colors ${currentView === 'dashboard' ? 'bg-yellow-400 text-black' : 'hover:bg-gray-100'}`}
-          >
-            <LayoutDashboardIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Dashboard</span>
-          </button>
-        </div>
-      </div>
-      {isAdmin && currentView === 'list' && (
-        <button onClick={() => confirmAction("Sincronizar Planilha", "Deseja sincronizar com o Google Sheets? Isso atualizará seus dados locais com as versões mais recentes do Google.", syncWithGoogleSheet)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white font-bold uppercase border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-blue-700 transition-transform active:translate-y-1 active:shadow-none">
-          <RefreshCwIcon className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Sincronizar</span>
-        </button>
-      )}
-    </div>
-  );
-
-  const ListView = () => {
-    const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
-      const isActive = sortConfig?.key === sortKey;
-      return (
-        <th className={`py-3 text-left text-xs font-black text-black uppercase cursor-pointer hover:bg-yellow-400 transition-colors border-r-2 border-black print:border-black ${extraClasses}`}
-            onClick={() => requestSort(sortKey)}>
-          <div className="flex items-center space-x-1">
-            <span>{label}</span>
-            {isActive ? (
-              sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />
-            ) : (
-              <ChevronUpIcon className="w-4 h-4 opacity-20 print:hidden" />
-            )}
-          </div>
-        </th>
-      );
-    };
-
-    return (
-      <div className="max-w-[95%] xl:max-w-[1400px] mx-auto px-4 py-8 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        <HeaderSwitcher title="Painel de Emendas" />
-        <FilterBar />
-
-        {/* Alternância Tabela/Cards e Botões de Exportação */}
-        <div className="flex justify-between mb-4 items-center print:hidden">
-          {/* Botões de Exportação (CSV / PDF) */}
-          <div className="flex border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-            <button 
-              onClick={handleExportCSV}
-              className="p-2 flex items-center font-bold uppercase text-xs border-r-2 border-black transition-colors hover:bg-yellow-400 text-black"
-              title="Exportar Filtrados para CSV"
-            >
-              <DownloadIcon className="h-4 w-4" /> <span className="ml-2 hidden sm:inline">CSV</span>
-            </button>
-            <button 
-              onClick={() => window.print()}
-              className="p-2 flex items-center font-bold uppercase text-xs transition-colors hover:bg-blue-600 hover:text-white text-black"
-              title="Exportar para PDF / Imprimir"
-            >
-              <PrinterIcon className="h-4 w-4" /> <span className="ml-2 hidden sm:inline">PDF</span>
-            </button>
-          </div>
-
-          {/* Toggle View Mode */}
-          <div className="flex border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-            <button 
-              onClick={() => setViewMode('table')}
-              className={`p-2 flex items-center font-bold uppercase text-xs border-r-2 border-black transition-colors ${viewMode === 'table' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}
-              title="Visualização em Lista"
-            >
-              <ListIcon className="h-4 w-4" /> <span className="ml-2 hidden sm:inline">Lista</span>
-            </button>
-            <button 
-              onClick={() => setViewMode('cards')}
-              className={`p-2 flex items-center font-bold uppercase text-xs transition-colors ${viewMode === 'cards' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}
-              title="Visualização em Cards"
-            >
-              <GridIcon className="h-4 w-4" /> <span className="ml-2 hidden sm:inline">Cards</span>
-            </button>
-          </div>
-        </div>
-
-        {viewMode === 'table' ? (
-          <div className="bg-white border-4 border-black overflow-x-auto shadow-[8px_8px_0_0_rgba(0,0,0,1)] print:shadow-none print:border-2 print:overflow-visible print:w-full">
-            <table className="min-w-[1000px] w-full border-collapse table-fixed print:min-w-0 print:w-full">
-              <thead className="bg-yellow-400 border-b-4 border-black print:bg-yellow-400">
-                <tr>
-                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="w-[100px] px-3 print:w-[8%]" />
-                  <SortableHeader label="Região" sortKey="REGIÃO" extraClasses="w-[120px] px-3 print:w-[12%]" />
-                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="w-[150px] px-3 print:w-[15%]" />
-                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="w-auto px-4 print:w-auto" />
-                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="w-[130px] px-3 print:w-[15%]" />
-                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="w-[110px] px-3 print:w-[10%]" />
-                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-[140px] px-3 border-r-0 print:w-[15%]" />
-                </tr>
-              </thead>
-              <tbody className="bg-white print:text-[10px]">
-                {filteredAndSortedEmendas.map((emenda, idx) => (
-                  <tr key={emenda['NÚMERO DA EMENDA'] || idx} onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
-                    className="hover:bg-yellow-50 cursor-pointer border-b-2 border-black transition-colors h-full print:break-inside-avoid print:cursor-auto">
-                    
-                    <td className="px-3 py-2 text-sm print:text-[10px] font-bold text-black border-r-2 border-black truncate print:whitespace-normal">
-                      {emenda['NÚMERO DA EMENDA']}
-                    </td>
-                    
-                    <td className="px-3 py-2 text-xs print:text-[10px] font-bold uppercase text-black border-r-2 border-black truncate print:whitespace-normal" title={emenda.REGIÃO}>
-                      {emenda.REGIÃO || '-'}
-                    </td>
-
-                    <td className="px-3 py-2 text-sm print:text-[10px] font-bold uppercase text-blue-600 border-r-2 border-black truncate print:whitespace-normal" title={emenda['MUNICÍPIO']}>
-                      {emenda['MUNICÍPIO']}
-                    </td>
-                    
-                    <td className="px-4 py-2 text-sm print:text-[10px] text-black font-medium border-r-2 border-black print:whitespace-normal print:break-words">
-                      {emenda.OBJETO}
-                    </td>
-                    
-                    <td className="px-3 py-2 text-sm print:text-[10px] font-bold text-red-600 border-r-2 border-black truncate print:whitespace-normal" title={emenda.ARTICULADOR}>
-                      {emenda.ARTICULADOR || '-'}
-                    </td>
-                    
-                    <td className="px-3 py-2 border-r-2 border-black align-middle">
-                      <span className={`block w-full text-center border-2 border-black px-1 py-0.5 text-[10px] print:text-[8px] font-black uppercase truncate print:whitespace-normal
-                        ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-blue-600 text-white print:bg-white print:text-black' : 
-                          emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-yellow-400 text-black print:bg-white print:text-black' : 'bg-white text-black'}`}
-                        title={emenda.SITUAÇÃO}>
-                        {emenda.SITUAÇÃO || 'Indefinida'}
-                      </span>
-                    </td>
-                    
-                    <td className="px-3 py-2 text-sm print:text-[10px] font-black text-black truncate print:whitespace-normal text-right border-r-0">
-                      {formatCurrency(parseCurrency(emenda.TOTAL))}
-                    </td>
-
-                  </tr>
-                ))}
-                {filteredAndSortedEmendas.length === 0 && (
-                  <tr><td colSpan="7" className="px-6 py-12 text-center font-bold text-gray-500 uppercase">Nenhuma emenda encontrada.</td></tr>
-                )}
-              </tbody>
-            </table>
-            <div className="bg-white px-6 py-3 font-bold text-sm text-black flex justify-between border-t-2 border-black print:hidden">
-              <span>{filteredAndSortedEmendas.length} de {emendas.length} Registros</span>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4">
-            {filteredAndSortedEmendas.map((emenda, idx) => (
-              <div key={emenda['NÚMERO DA EMENDA'] || idx} 
-                   className="border-4 border-black bg-white shadow-[6px_6px_0_0_rgba(0,0,0,1)] print:shadow-none flex flex-col hover:-translate-y-1 transition-transform cursor-pointer print:break-inside-avoid print:cursor-auto"
-                   onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}>
-                <div className="bg-yellow-400 border-b-4 border-black p-3 flex justify-between items-center print:bg-yellow-400">
-                  <span className="font-black text-black text-lg tracking-tighter print:text-sm">#{emenda['NÚMERO DA EMENDA']}</span>
-                  <span className={`border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase shadow-[2px_2px_0_0_rgba(0,0,0,1)] print:shadow-none
-                        ${emenda.SITUAÇÃO?.toLowerCase().includes('pago') ? 'bg-blue-600 text-white print:bg-white print:text-black' : 
-                          emenda.SITUAÇÃO?.toLowerCase().includes('pagar') ? 'bg-white text-black' : 'bg-gray-100 text-black'}`}>
-                    {emenda.SITUAÇÃO || 'Indefinida'}
-                  </span>
-                </div>
-                <div className="p-4 flex-1 flex flex-col print:p-2">
-                  <div className="flex flex-wrap gap-x-4 mb-2">
-                    <div className="flex items-center">
-                      <MapPinIcon className="h-4 w-4 mr-1 text-blue-600 print:text-black" />
-                      <p className="text-blue-600 font-black uppercase text-sm print:text-black print:text-xs">{emenda['MUNICÍPIO']}</p>
-                    </div>
-                    {emenda.REGIÃO && (
-                      <div className="flex items-center">
-                        <MapIcon className="h-4 w-4 mr-1 text-black" />
-                        <p className="text-black font-black uppercase text-xs">{emenda.REGIÃO}</p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-sm font-medium text-black line-clamp-4 flex-1 print:line-clamp-none print:text-xs">{emenda.OBJETO}</p>
-                </div>
-                <div className="bg-white border-t-4 border-black p-4 flex justify-between items-end print:p-2">
-                  <div>
-                    <p className="text-[10px] font-black uppercase text-black mb-1">Articulador</p>
-                    <p className="text-red-600 font-bold text-sm uppercase truncate max-w-[120px] print:text-black print:text-xs">{emenda.ARTICULADOR || '-'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black uppercase text-black mb-1">Total</p>
-                    <p className="font-black text-black text-lg leading-none print:text-sm">{formatCurrency(parseCurrency(emenda.TOTAL))}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {filteredAndSortedEmendas.length === 0 && (
-              <div className="col-span-full py-12 text-center font-bold text-black uppercase border-4 border-black border-dashed">
-                Nenhuma emenda encontrada.
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const DashboardView = () => {
-    const [hoveredMuni, setHoveredMuni] = useState(null);
-
-    const totalGlobal = filteredAndSortedEmendas.reduce((acc, em) => acc + parseCurrency(em.TOTAL), 0);
-    
-    const emendasPorAno = filteredAndSortedEmendas.reduce((acc, em) => {
-      const ano = em.ANO || 'N/A';
-      acc[ano] = (acc[ano] || 0) + parseCurrency(em.TOTAL);
-      return acc;
-    }, {});
-    const timelineData = Object.keys(emendasPorAno).sort().map(ano => ({ ano, valor: emendasPorAno[ano] }));
-
-    const emendasPorRegiao = filteredAndSortedEmendas.reduce((acc, em) => {
-      const regiao = em.REGIÃO || 'N/A';
-      acc[regiao] = (acc[regiao] || 0) + parseCurrency(em.TOTAL);
-      return acc;
-    }, {});
-    const regiaoData = Object.keys(emendasPorRegiao).map(regiao => ({ regiao, valor: emendasPorRegiao[regiao] }))
-      .sort((a, b) => b.valor - a.valor).slice(0, 5);
-
-    const emendasPorMuni = useMemo(() => {
-      const map = {};
-      filteredAndSortedEmendas.forEach(em => {
-        const mName = normalizeStr(em['MUNICÍPIO']);
-        if(mName) map[mName] = (map[mName] || 0) + parseCurrency(em.TOTAL);
-      });
-      return map;
-    }, [filteredAndSortedEmendas]);
-
-    const getMuniColor = (val) => {
-      if (!val || val === 0) return '#ffffff'; // Branco
-      if (val < 300000) return '#facc15'; // Amarelo
-      if (val < 800000) return '#2563eb'; // Azul
-      return '#dc2626'; // Vermelho
-    };
-
-    const renderMap = () => {
-      if (!mapGeoJson) return <div className="p-8 text-center font-bold">Carregando Mapa...</div>;
-
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      mapGeoJson.features.forEach(f => {
-        const processRings = (rings) => {
-          rings.forEach(ring => ring.forEach(coord => {
-            if (coord[0] < minX) minX = coord[0];
-            if (coord[0] > maxX) maxX = coord[0];
-            if (coord[1] < minY) minY = coord[1];
-            if (coord[1] > maxY) maxY = coord[1];
-          }));
-        };
-        if (f.geometry.type === 'Polygon') processRings(f.geometry.coordinates);
-        else if (f.geometry.type === 'MultiPolygon') f.geometry.coordinates.forEach(processRings);
-      });
-
-      const mapWidth = 800; const mapHeight = 600;
-      const scaleX = mapWidth / (maxX - minX);
-      const scaleY = mapHeight / (maxY - minY);
-      const scale = Math.min(scaleX, scaleY) * 0.95; 
-      
-      const offsetX = (mapWidth - (maxX - minX) * scale) / 2;
-      const offsetY = (mapHeight - (maxY - minY) * scale) / 2;
-
-      const project = (coord) => {
-        const x = (coord[0] - minX) * scale + offsetX;
-        const y = mapHeight - ((coord[1] - minY) * scale) - offsetY;
-        return `${x},${y}`;
-      };
-
-      const generatePath = (geometry) => {
-        const createString = (rings) => rings.map(ring => "M" + ring.map(coord => project(coord)).join("L") + "Z").join(" ");
-        if (geometry.type === 'Polygon') return createString(geometry.coordinates);
-        if (geometry.type === 'MultiPolygon') return geometry.coordinates.map(createString).join(" ");
-        return "";
-      };
-
-      return (
-        <svg viewBox={`0 0 ${mapWidth} ${mapHeight}`} className="w-full h-auto drop-shadow-md">
-          {mapGeoJson.features.map((feature, i) => {
-            const mName = normalizeStr(feature.properties.name);
-            const val = emendasPorMuni[mName] || 0;
-            return (
-              <path 
-                key={i} d={generatePath(feature.geometry)}
-                fill={getMuniColor(val)} stroke="#000" strokeWidth="1"
-                className="hover:stroke-[3px] transition-all cursor-crosshair relative"
-                onMouseEnter={(e) => {
-                  const rect = e.target.getBoundingClientRect();
-                  setHoveredMuni({ name: feature.properties.name, val, x: e.clientX, y: e.clientY });
-                }}
-                onMouseLeave={() => setHoveredMuni(null)}
-                onClick={() => { if(val > 0) { resetToFrontPage(); setFilterMunicipios([feature.properties.name]); } }}
-              />
-            );
-          })}
-        </svg>
-      );
-    };
-
-    return (
-      <div className="max-w-[95%] xl:max-w-[1400px] mx-auto px-4 py-8 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        <HeaderSwitcher title="Dashboard Estatístico" />
-        <FilterBar />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 print:grid-cols-1 print:gap-4">
-          <div className="lg:col-span-1 space-y-8">
-            <div className="bg-yellow-400 border-4 border-black p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] print:shadow-none flex flex-col justify-center">
-              <p className="text-black font-black uppercase text-sm tracking-widest border-b-4 border-black pb-2 mb-4">Valor Total no Filtro</p>
-              <h2 className="text-4xl xl:text-5xl font-black text-black break-words leading-none">
-                {formatCurrency(totalGlobal)}
-              </h2>
-            </div>
-
-            <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] print:shadow-none">
-              <p className="text-black font-black uppercase text-sm tracking-widest border-b-4 border-black pb-2 mb-6">Top Regiões</p>
-              <div className="space-y-4">
-                {regiaoData.length > 0 ? regiaoData.map((d, i) => {
-                  const maxVal = Math.max(...regiaoData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div key={d.regiao}>
-                      <div className="flex justify-between text-xs font-bold uppercase mb-1">
-                        <span>{d.regiao}</span>
-                        <span>{formatCurrency(d.valor)}</span>
-                      </div>
-                      <div className="h-6 w-full bg-white border-2 border-black">
-                        <div className="h-full bg-blue-600 border-r-2 border-black" style={{ width: `${pct}%` }}></div>
-                      </div>
-                    </div>
-                  );
-                }) : <p className="text-sm font-bold text-gray-500 uppercase">Sem dados.</p>}
-              </div>
-            </div>
-
-            <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] print:shadow-none">
-              <p className="text-black font-black uppercase text-sm tracking-widest border-b-4 border-black pb-2 mb-6">Evolução Anual</p>
-              <div className="flex items-end h-40 space-x-2 border-b-2 border-l-2 border-black p-2">
-                {timelineData.length > 0 ? timelineData.map((d, i) => {
-                  const maxVal = Math.max(...timelineData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div key={d.ano} className="flex-1 flex flex-col items-center group relative h-full justify-end">
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-black text-white text-[10px] font-bold px-2 py-1 pointer-events-none whitespace-nowrap z-10 print:opacity-100 print:relative print:-top-0 print:mb-1 print:bg-white print:text-black">
-                        {formatCurrency(d.valor)}
-                      </div>
-                      <div className="w-full bg-red-600 border-2 border-black transition-all group-hover:bg-yellow-400" style={{ height: `${pct}%` }}></div>
-                      <span className="text-[10px] font-black mt-2">{d.ano}</span>
-                    </div>
-                  );
-                }) : <p className="text-sm font-bold text-gray-500 uppercase self-center w-full text-center">Sem dados.</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 bg-white border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] print:shadow-none flex flex-col relative overflow-hidden print:break-before-page">
-            <div className="bg-blue-600 border-b-4 border-black p-4 flex justify-between items-center z-10 print:bg-white print:border-b-2">
-              <p className="text-white font-black uppercase tracking-widest flex items-center print:text-black">
-                <MapPinIcon className="h-5 w-5 mr-2" /> Mapa de Santa Catarina
-              </p>
-              <div className="flex space-x-2 text-[10px] font-black uppercase text-white items-center print:text-black">
-                <span>Legenda:</span>
-                <div className="w-3 h-3 bg-yellow-400 border border-black"></div> <span>Baixo</span>
-                <div className="w-3 h-3 bg-blue-600 border border-black ml-2"></div> <span>Médio</span>
-                <div className="w-3 h-3 bg-red-600 border border-black ml-2"></div> <span>Alto</span>
-              </div>
-            </div>
-            
-            <div className="flex-1 p-2 bg-white relative">
-              {renderMap()}
-              
-              {hoveredMuni && (
-                <div className="fixed bg-white border-4 border-black p-3 shadow-[4px_4px_0_0_rgba(0,0,0,1)] z-50 pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-10px] print:hidden"
-                     style={{ left: hoveredMuni.x, top: hoveredMuni.y }}>
-                  <p className="font-black text-red-600 uppercase">{hoveredMuni.name}</p>
-                  <p className="font-bold text-sm text-black">{hoveredMuni.val > 0 ? formatCurrency(hoveredMuni.val) : 'Nenhuma emenda'}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const DetailView = () => {
-    const isEditing = currentView === 'edit';
-    const data = isEditing ? editingEmenda : selectedEmenda;
-    const handleInputChange = (field, value) => setEditingEmenda(prev => ({ ...prev, [field]: value }));
-
-    const InfoField = ({ label, field, icon: IconComponent, type = 'text', linkType = null, color = 'blue', isCurrency = false }) => {
-      const rawValue = data[field];
-      let displayValue = rawValue;
-      
-      if (!isEditing && isCurrency) {
-        displayValue = formatCurrency(parseCurrency(rawValue));
-      }
-
-      const colorClass = color === 'blue' ? 'text-blue-600' : color === 'red' ? 'text-red-600' : 'text-yellow-600';
-      
-      if (isEditing) {
-        return (
-          <div className="mb-4">
-            <label className={`block text-xs font-black uppercase mb-1 ${colorClass}`}>{label}</label>
-            {type === 'textarea' ? (
-              <textarea className="w-full p-2 bg-white border-2 border-black rounded-none focus:outline-none focus:border-red-600 font-medium text-black"
-                rows="3" value={rawValue || ''} onChange={(e) => handleInputChange(field, e.target.value)} />
-            ) : (
-              <input type="text" className="w-full p-2 bg-white border-2 border-black rounded-none focus:outline-none focus:border-red-600 font-medium text-black"
-                value={rawValue || ''} onChange={(e) => handleInputChange(field, e.target.value)} />
-            )}
-          </div>
-        );
-      }
-      return (
-        <div className="mb-4 bg-white p-3 border-2 border-black shadow-[2px_2px_0_0_rgba(0,0,0,1)] print:shadow-none relative">
-          <label className={`block text-xs font-black uppercase tracking-wider mb-1 flex items-center ${colorClass} print:text-black`}>
-            {IconComponent && <IconComponent className="h-4 w-4 mr-1 print:hidden" />} {label}
-          </label>
-          <div className="text-black font-medium text-sm break-words">
-            {displayValue || <span className="text-gray-400 italic">N/A</span>}
-            {linkType && rawValue && (
-               <button onClick={(e) => { e.stopPropagation(); handleEntityClick(linkType, rawValue); }} className="ml-2 text-[10px] bg-yellow-400 text-black border border-black px-1 uppercase font-bold hover:bg-yellow-500 print:hidden">
-                 Filtrar
-               </button>
-            )}
-          </div>
-        </div>
-      );
-    };
-
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-8 animate-in slide-in-from-right-4 print:w-full print:max-w-none print:m-0 print:p-0">
-        <button onClick={() => { setCurrentView('list'); setEditingEmenda(null); }}
-          className="bg-black text-white px-4 py-2 font-bold uppercase text-xs border-2 border-black hover:bg-gray-800 mb-6 flex items-center shadow-[4px_4px_0_0_rgba(0,0,0,1)] print:hidden">
-          &larr; Voltar
-        </button>
-
-        <div className="bg-white border-4 border-black shadow-[12px_12px_0_0_rgba(0,0,0,1)] print:shadow-none print:border-none">
-          <div className="bg-red-600 border-b-4 border-black p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0 print:bg-white print:border-b-2">
-            <div>
-              <p className="text-white font-bold uppercase text-sm mb-1 tracking-wider print:text-black">Ficha de Emenda</p>
-              <h2 className="text-4xl font-black text-white tracking-tighter print:text-black">Nº {data['NÚMERO DA EMENDA']}</h2>
-            </div>
-            {isAdmin && !isEditing && (
-              <button onClick={() => { setEditingEmenda({ ...selectedEmenda }); setCurrentView('edit'); }}
-                className="bg-yellow-400 text-black border-2 border-black px-6 py-2 font-black uppercase shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-yellow-500 transition-transform active:translate-y-1 active:shadow-none flex items-center print:hidden">
-                <EditIcon className="h-5 w-5 mr-2" /> Editar Ficha
-              </button>
-            )}
-            {isAdmin && isEditing && (
-              <div className="flex space-x-3 print:hidden">
-                <button onClick={() => setCurrentView('detail')}
-                  className="bg-white text-black border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-gray-100 transition-transform active:translate-y-1 active:shadow-none flex items-center">
-                  <XIcon className="h-5 w-5 mr-2" /> Cancelar
-                </button>
-                <button onClick={() => confirmAction("Salvar Alterações", "Confirmar alterações? A mudança será salva e sincronizada na nuvem.", handleSaveEmenda)}
-                  className="bg-blue-600 text-white border-2 border-black px-6 py-2 font-black uppercase shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-blue-700 transition-transform active:translate-y-1 active:shadow-none flex items-center">
-                  <SaveIcon className="h-5 w-5 mr-2" /> Salvar
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 print:p-0 print:mt-4">
-            <div className="col-span-1 md:col-span-2">
-              <InfoField label="Objeto / Descrição Principal" field="OBJETO" type="textarea" color="red" />
-            </div>
-            
-            <div className="space-y-3 bg-white border-2 border-black p-4 print:border-none print:p-0">
-              <div className="bg-black text-white font-black uppercase text-sm py-1 px-3 inline-block border-2 border-black -mt-8 mb-4 print:bg-white print:text-black print:border-b-2 print:border-t-0 print:border-l-0 print:border-r-0 print:-mt-0 print:mb-2 print:p-0">Identificação</div>
-              <InfoField label="Município" field="MUNICÍPIO" icon={MapPinIcon} linkType="municipio" color="blue" />
-              <InfoField label="Região" field="REGIÃO" icon={MapIcon} linkType="regiao" color="black" />
-              <InfoField label="Tema" field="TEMA" icon={TagIcon} linkType="tema" color="blue" />
-              <InfoField label="Articulador" field="ARTICULADOR" icon={UserIcon} linkType="articulador" color="red" />
-              <InfoField label="Ano" field="ANO" color="black" />
-            </div>
-
-            <div className="space-y-3 bg-white border-2 border-black p-4 print:border-none print:p-0">
-              <div className="bg-black text-white font-black uppercase text-sm py-1 px-3 inline-block border-2 border-black -mt-8 mb-4 print:bg-white print:text-black print:border-b-2 print:border-t-0 print:border-l-0 print:border-r-0 print:-mt-0 print:mb-2 print:p-0">Financeiro / Status</div>
-              <InfoField label="Situação" field="SITUAÇÃO" linkType="situacao" color="red" />
-              <InfoField label="Total Previsto" field="TOTAL" color="blue" isCurrency={true} />
-              <InfoField label="Valor Pago" field="PAGO" color="blue" isCurrency={true} />
-              <InfoField label="Esfera de Aplicação" field="ESFERA DE APLICAÇÃO" color="black" />
-              <InfoField label="Unidade Orçamentária" field="UNIDADE ORÇAMENTÁRIA" color="black" />
-            </div>
-
-            <div className="col-span-1 md:col-span-2 space-y-3 bg-white border-2 border-black p-4 mt-4 print:border-none print:p-0">
-              <div className="bg-black text-white font-black uppercase text-sm py-1 px-3 inline-block border-2 border-black -mt-8 mb-4 print:bg-white print:text-black print:border-b-2 print:border-t-0 print:border-l-0 print:border-r-0 print:-mt-0 print:mb-2 print:p-0">Entidade / Liderança</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InfoField label="Liderança" field="LIDERANÇA" color="blue" />
-                <InfoField label="Razão Social" field="RAZÃO SOCIAL" color="black" />
-                <InfoField label="Telefone" field="TELEFONE DA LIDERANÇA" color="red" />
-                <InfoField label="Email" field="EMAIL DA LIDERANÇA" color="black" />
-              </div>
-            </div>
-
-            <div className="col-span-1 md:col-span-2 space-y-3 bg-yellow-400 border-2 border-black p-4 mt-4 print:bg-white print:border-none print:p-0">
-              <div className="bg-white text-black font-black uppercase text-sm py-1 px-3 inline-block border-2 border-black -mt-8 mb-4 print:bg-white print:text-black print:border-b-2 print:border-t-0 print:border-l-0 print:border-r-0 print:-mt-0 print:mb-2 print:p-0">Dados Técnicos</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <InfoField label="SGPe" field="SGPe" color="black" />
-                <InfoField label="Modalidade" field="MODALIDADE" color="black" />
-                <InfoField label="Tipo" field="TIPO (IMPOSITIVA, BANCADA, PARLAMENTARES)" color="black" />
-              </div>
-              <InfoField label="Entrega Realizada" field="ENTREGA" type="textarea" color="black" />
-              <InfoField label="Justificativa" field="JUSTIFICATIVA" type="textarea" color="black" />
-              <InfoField label="Observações Livres" field="Observação" type="textarea" color="black" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const SettingsView = () => {
-    const [newPass, setNewPass] = useState('');
-
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-8 animate-in fade-in print:hidden">
-        <button onClick={() => setCurrentView('list')} className="bg-black text-white px-4 py-2 font-bold uppercase text-xs border-2 border-black hover:bg-gray-800 mb-6 flex items-center shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-          &larr; Voltar
-        </button>
-
-        <div className="bg-white border-4 border-black shadow-[12px_12px_0_0_rgba(0,0,0,1)]">
-          <div className="bg-blue-600 border-b-4 border-black p-6">
-             <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center"><SettingsIcon className="mr-3 h-8 w-8" /> Configurações</h2>
-          </div>
-          <div className="p-8 space-y-8">
-            <div className="bg-yellow-400 border-4 border-black text-black p-4 flex items-start shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-              <AlertTriangleIcon className="h-6 w-6 mr-3 flex-shrink-0" />
-              <p className="text-sm font-bold">Modo de Segurança Máxima Ativado. A URL da planilha Google agora é gerenciada exclusivamente pelo Servidor (Backend).</p>
-            </div>
-            <div className="border-2 border-black p-6 bg-white">
-              <h3 className="text-xl font-black uppercase text-blue-600 border-b-4 border-black pb-2 mb-4 flex items-center"><UploadCloudIcon className="h-6 w-6 mr-2" /> Importação CSV Manual</h3>
-              <input type="file" accept=".csv" onChange={handleImportCSV} className="block w-full text-sm font-medium border-2 border-black p-2 bg-white file:mr-4 file:py-2 file:px-4 file:border-2 file:border-black file:text-sm file:font-black file:uppercase file:bg-yellow-400 file:text-black hover:file:bg-yellow-500 cursor-pointer" />
-            </div>
-            <div className="border-2 border-black p-6 bg-white">
-              <h3 className="text-xl font-black uppercase text-black border-b-4 border-black pb-2 mb-4 flex items-center">
-                Segurança Local
-              </h3>
-              <div>
-                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                  <input type="text" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Nova senha administrativa..." className="flex-1 p-3 bg-white border-2 border-black rounded-none focus:outline-none focus:border-red-600 font-medium" />
-                  <button onClick={() => {
-                    if(newPass.length < 3) return alert("Mínimo de 3 caracteres.");
-                    handleChangePassword(newPass);
-                    setNewPass('');
-                  }} className="bg-red-600 text-white font-black uppercase px-6 border-2 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-red-700 transition-transform active:translate-y-1 active:shadow-none whitespace-nowrap">
-                    Atualizar Senha
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center p-8 bg-white border-4 border-black shadow-[12px_12px_0_0_rgba(0,0,0,1)]">
-          <div className="flex space-x-2 justify-center mb-6">
-            <div className="w-6 h-6 bg-red-600 border-2 border-black animate-bounce" style={{animationDelay: '0s'}}></div>
-            <div className="w-6 h-6 bg-yellow-400 border-2 border-black animate-bounce" style={{animationDelay: '0.2s'}}></div>
-            <div className="w-6 h-6 bg-blue-600 border-2 border-black animate-bounce" style={{animationDelay: '0.4s'}}></div>
-          </div>
-          <p className="text-black font-black uppercase tracking-widest">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 selection:bg-yellow-400 selection:text-black pb-12 print:pb-0">
-      <Navbar />
-      <main>
-        {currentView === 'list' && <ListView />}
-        {currentView === 'dashboard' && <DashboardView />}
-        {(currentView === 'detail' || currentView === 'edit') && <DetailView />}
-        {currentView === 'settings' && <SettingsView />}
-      </main>
-
-      {showLoginModal && (
-        <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white border-4 border-black shadow-[16px_16px_0_0_rgba(0,0,0,1)] p-8 w-full max-w-sm m-4 relative">
-            <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 bg-white border-2 border-black p-1 hover:bg-red-600 hover:text-white transition-colors">
-              <XIcon className="h-6 w-6" />
-            </button>
-            <h3 className="text-2xl font-black text-black uppercase mb-2 flex items-center tracking-tighter"><LogInIcon className="mr-3 h-8 w-8 text-red-600" /> Acesso</h3>
-            <div className="w-16 h-2 bg-yellow-400 border-2 border-black mb-6"></div>
-            <input type="password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} placeholder="Senha" className="w-full p-4 bg-white border-4 border-black rounded-none focus:outline-none focus:border-blue-600 font-medium mb-6 text-black" />
-            <button onClick={handleLogin} className="w-full bg-blue-600 text-white font-black uppercase py-4 border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] hover:bg-blue-700 hover:-translate-y-1 transition-transform active:translate-y-1 active:shadow-none">Entrar</button>
-          </div>
-        </div>
-      )}
-
-      {confirmModal.isOpen && (
-        <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white border-4 border-black shadow-[16px_16px_0_0_rgba(0,0,0,1)] p-8 w-full max-w-md m-4 relative">
-            <h3 className="text-2xl font-black text-black uppercase mb-4 tracking-tighter">{confirmModal.title}</h3>
-            <p className="text-black font-medium mb-8 border-l-4 border-yellow-400 pl-4">{confirmModal.message}</p>
-            <div className="flex flex-col sm:flex-row justify-end space-y-4 sm:space-y-0 sm:space-x-4">
-              <button onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })} className="px-6 py-3 bg-white text-black font-black uppercase border-4 border-black hover:bg-gray-100 shadow-[4px_4px_0_0_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none text-center">Cancelar</button>
-              <button onClick={confirmModal.onConfirm} className="px-6 py-3 bg-red-600 text-white font-black uppercase border-4 border-black hover:bg-red-700 shadow-[4px_4px_0_0_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none flex items-center justify-center"><CheckCircleIcon className="h-5 w-5 mr-2" /> Confirmar</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        <div
+          onClick={handleToggleDropdown}
+          className={`px-2.5 py-1.5 bg-white border transition-colors text-[11px] font-semibold uppercase tracking-wide cursor-pointer flex justify-between items-center min-w-[135px] max-w-[190px] ${
+            selected.length > 0
+              ? 'border-teal-700 bg-teal-50/50 text-teal-950 shadow-[2px_2px_0_0_#0f766e]'
+              : 'border-stone-800 text-stone-800 hover:bg-stone-50'
