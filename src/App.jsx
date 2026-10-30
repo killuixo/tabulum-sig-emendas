@@ -23,7 +23,6 @@ const UserIcon = (p) => <Icon {...p} path={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a
 const TagIcon = (p) => <Icon {...p} path={<><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></>} />;
 const BuildingIcon = (p) => <Icon {...p} path={<><rect width="16" height="20" x="4" y="2" rx="1"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></>} />;
 const LayersIcon = (p) => <Icon {...p} path={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>} />;
-const InfoIcon = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>} />;
 const EditIcon = (p) => <Icon {...p} path={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>} />;
 const SaveIcon = (p) => <Icon {...p} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />;
 const XIcon = (p) => <Icon {...p} path={<><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>} />;
@@ -42,6 +41,7 @@ const GridIcon = (p) => <Icon {...p} path={<><rect width="7" height="7" x="3" y=
 const ListIcon = (p) => <Icon {...p} path={<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>} />;
 const DownloadIcon = (p) => <Icon {...p} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></>} />;
 const PrinterIcon = (p) => <Icon {...p} path={<><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></>} />;
+const FilterIcon = (p) => <Icon {...p} path={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></>} />;
 
 function parseCSV(text) {
   const csvText = text.replace(/^\uFEFF/, '');
@@ -86,7 +86,6 @@ function normalizeStr(str) {
   return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
 }
 
-// Garante que a Modalidade apareça preenchida mesmo se alguma linha da planilha tiver apenas a Esfera de Aplicação
 function getModalidade(emenda) {
   if (!emenda) return '';
   if (emenda.MODALIDADE && String(emenda.MODALIDADE).trim() !== '') {
@@ -106,6 +105,67 @@ function getModalidade(emenda) {
   return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
 }
 
+// Função Universal de Ordenação (Alfabética e Numérica Crescente/Decrescente)
+function sortEmendasList(list, sortConfig) {
+  if (!sortConfig || !sortConfig.key) return list;
+  const sorted = [...list];
+  sorted.sort((a, b) => {
+    let valA = a[sortConfig.key];
+    let valB = b[sortConfig.key];
+
+    if (sortConfig.key === 'TOTAL' || sortConfig.key === 'PAGO') {
+      const numA = parseCurrency(valA);
+      const numB = parseCurrency(valB);
+      return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+    }
+
+    if (sortConfig.key === 'ANO') {
+      const numA = parseInt(valA) || 0;
+      const numB = parseInt(valB) || 0;
+      return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+    }
+
+    if (sortConfig.key === 'NÚMERO DA EMENDA' || sortConfig.key === 'SGPe') {
+      const strA = String(valA || '').replace(/[^\d/]/g, '');
+      const strB = String(valB || '').replace(/[^\d/]/g, '');
+      const partsA = strA.split('/');
+      const partsB = strB.split('/');
+      const numA = parseInt(partsA[0]) || 0;
+      const yearA = parseInt(partsA[1]) || 0;
+      const numB = parseInt(partsB[0]) || 0;
+      const yearB = parseInt(partsB[1]) || 0;
+
+      if (yearA !== yearB) {
+        return sortConfig.direction === 'asc' ? yearA - yearB : yearB - yearA;
+      }
+      return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+    }
+
+    const strA = String(valA || '').trim();
+    const strB = String(valB || '').trim();
+
+    if (!strA && strB) return 1;
+    if (strA && !strB) return -1;
+
+    const cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base', numeric: true });
+    return sortConfig.direction === 'asc' ? cmp : -cmp;
+  });
+  return sorted;
+}
+
+const ENTITY_TYPE_META = {
+  regiao: { label: 'Região', plural: 'Regiões', field: 'REGIÃO' },
+  municipio: { label: 'Município', plural: 'Municípios', field: 'MUNICÍPIO' },
+  modalidade: { label: 'Modalidade', plural: 'Modalidades', field: 'MODALIDADE' },
+  entidade: { label: 'Entidade', plural: 'Entidades', field: 'RAZÃO SOCIAL' },
+  uo: { label: 'Unidade Orçamentária', plural: 'Unidades Orçamentárias', field: 'UNIDADE ORÇAMENTÁRIA' },
+  situacao: { label: 'Situação', plural: 'Situações', field: 'SITUAÇÃO' },
+  articulador: { label: 'Articulador', plural: 'Articuladores', field: 'ARTICULADOR' },
+  tema: { label: 'Tema', plural: 'Temas', field: 'TEMA' },
+  ano: { label: 'Ano', plural: 'Anos', field: 'ANO' },
+  lideranca: { label: 'Liderança', plural: 'Lideranças', field: 'LIDERANÇA' }
+};
+
 export default function App() {
   const [emendas, setEmendas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,13 +178,17 @@ export default function App() {
   const [selectedEmenda, setSelectedEmenda] = useState(null);
   const [editingEmenda, setEditingEmenda] = useState(null);
 
+  // Estado e Histórico de Navegação das Fichas de Cruzamento (Região, Município, Modalidade, Entidade, etc.)
+  const [selectedEntityFicha, setSelectedEntityFicha] = useState(null);
+  const [entityHistory, setEntityHistory] = useState([]);
+
   // Filtros Universais de Multiseleção
   const [searchTerm, setSearchTerm] = useState('');
   const [filterArticuladores, setFilterArticuladores] = useState([]);
   const [filterMunicipios, setFilterMunicipios] = useState([]);
   const [filterRegioes, setFilterRegioes] = useState([]);
   const [filterModalidades, setFilterModalidades] = useState([]);
-  const [filterRazoesSociais, setFilterRazoesSociais] = useState([]);
+  const [filterEntidades, setFilterEntidades] = useState([]);
   const [filterTemas, setFilterTemas] = useState([]);
   const [filterUOs, setFilterUOs] = useState([]);
   const [filterSituacoes, setFilterSituacoes] = useState([]);
@@ -132,7 +196,6 @@ export default function App() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
   const [openDropdown, setOpenDropdown] = useState(null);
-
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -143,11 +206,11 @@ export default function App() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Normaliza MODALIDADE caso venha vazia em alguma linha da planilha
   const normalizedEmendas = useMemo(() => {
     return emendas.map(e => ({
       ...e,
-      MODALIDADE: getModalidade(e)
+      MODALIDADE: getModalidade(e),
+      ANO: e.ANO ? String(e.ANO).trim() : (String(e['NÚMERO DA EMENDA'] || '').split('/')[1] || '').trim()
     }));
   }, [emendas]);
 
@@ -155,7 +218,7 @@ export default function App() {
   const municipios = useMemo(() => [...new Set(normalizedEmendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const regioes = useMemo(() => [...new Set(normalizedEmendas.map(e => e.REGIÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const modalidades = useMemo(() => [...new Set(normalizedEmendas.map(e => e.MODALIDADE).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
-  const razoesSociais = useMemo(() => [...new Set(normalizedEmendas.map(e => e['RAZÃO SOCIAL']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
+  const entidades = useMemo(() => [...new Set(normalizedEmendas.map(e => e['RAZÃO SOCIAL']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const temas = useMemo(() => [...new Set(normalizedEmendas.map(e => e.TEMA).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const unidadesOrcamentarias = useMemo(() => [...new Set(normalizedEmendas.map(e => e['UNIDADE ORÇAMENTÁRIA']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const situacoes = useMemo(() => [...new Set(normalizedEmendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
@@ -203,7 +266,7 @@ export default function App() {
     setFilterMunicipios([]);
     setFilterRegioes([]);
     setFilterModalidades([]);
-    setFilterRazoesSociais([]);
+    setFilterEntidades([]);
     setFilterTemas([]);
     setFilterUOs([]);
     setFilterSituacoes([]);
@@ -213,6 +276,8 @@ export default function App() {
   const resetToFrontPage = () => {
     setCurrentView('list');
     setViewMode('table');
+    setSelectedEntityFicha(null);
+    setEntityHistory([]);
     clearAllFilters();
     setSortConfig({ key: null, direction: 'asc' });
   };
@@ -335,13 +400,45 @@ export default function App() {
     });
   };
 
-  const handleEntityClick = (type, value) => {
-    resetToFrontPage();
+  // Abre a Ficha de Cruzamento de Dados para qualquer Região, Município, Modalidade, Entidade, Unidade Orçamentária, Situação, Articulador, etc.
+  const openEntityFicha = (type, value, e = null) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (!value || String(value).trim() === '' || String(value).trim() === '-') return;
+    const cleanVal = String(value).trim();
+
+    if (currentView === 'entity' && selectedEntityFicha) {
+      if (selectedEntityFicha.type === type && selectedEntityFicha.value === cleanVal) return;
+      setEntityHistory(prev => [...prev, selectedEntityFicha]);
+    } else {
+      setEntityHistory([]);
+    }
+
+    setSelectedEntityFicha({ type, value: cleanVal });
+    setCurrentView('entity');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goBackFromEntityFicha = () => {
+    if (entityHistory.length > 0) {
+      const previous = entityHistory[entityHistory.length - 1];
+      setEntityHistory(prev => prev.slice(0, -1));
+      setSelectedEntityFicha(previous);
+    } else {
+      setSelectedEntityFicha(null);
+      setCurrentView('list');
+    }
+  };
+
+  const applyEntityFilterToMainList = (type, value) => {
+    clearAllFilters();
+    setSelectedEntityFicha(null);
+    setEntityHistory([]);
+    setCurrentView('list');
     if (type === 'articulador') setFilterArticuladores([value]);
     if (type === 'municipio') setFilterMunicipios([value]);
     if (type === 'regiao') setFilterRegioes([value]);
     if (type === 'modalidade') setFilterModalidades([value]);
-    if (type === 'razaoSocial') setFilterRazoesSociais([value]);
+    if (type === 'entidade') setFilterEntidades([value]);
     if (type === 'tema') setFilterTemas([value]);
     if (type === 'uo') setFilterUOs([value]);
     if (type === 'situacao') setFilterSituacoes([value]);
@@ -356,15 +453,14 @@ export default function App() {
     setSortConfig({ key, direction });
   };
 
-  // Filtragem e Ordenação Universal (Alfabética e Numérica em todos os campos pesquisáveis)
   const filteredAndSortedEmendas = useMemo(() => {
-    let result = normalizedEmendas.filter(e => {
+    const filtered = normalizedEmendas.filter(e => {
       const matchesSearch = searchTerm === '' || JSON.stringify(e).toLowerCase().includes(searchTerm.toLowerCase());
       const matchesArticulador = filterArticuladores.length === 0 || filterArticuladores.includes(e.ARTICULADOR);
       const matchesMunicipio = filterMunicipios.length === 0 || filterMunicipios.includes(e['MUNICÍPIO']);
       const matchesRegiao = filterRegioes.length === 0 || filterRegioes.includes(e.REGIÃO);
       const matchesModalidade = filterModalidades.length === 0 || filterModalidades.includes(e.MODALIDADE);
-      const matchesRazaoSocial = filterRazoesSociais.length === 0 || filterRazoesSociais.includes(e['RAZÃO SOCIAL']);
+      const matchesEntidade = filterEntidades.length === 0 || filterEntidades.includes(e['RAZÃO SOCIAL']);
       const matchesTema = filterTemas.length === 0 || filterTemas.includes(e.TEMA);
       const matchesUO = filterUOs.length === 0 || filterUOs.includes(e['UNIDADE ORÇAMENTÁRIA']);
       const matchesSituacao = filterSituacoes.length === 0 || filterSituacoes.includes(e.SITUAÇÃO);
@@ -376,7 +472,7 @@ export default function App() {
         matchesMunicipio &&
         matchesRegiao &&
         matchesModalidade &&
-        matchesRazaoSocial &&
+        matchesEntidade &&
         matchesTema &&
         matchesUO &&
         matchesSituacao &&
@@ -384,56 +480,7 @@ export default function App() {
       );
     });
 
-    if (sortConfig.key) {
-      result.sort((a, b) => {
-        let valA = a[sortConfig.key];
-        let valB = b[sortConfig.key];
-
-        // Ordenação Numérica Monetária (TOTAL e PAGO)
-        if (sortConfig.key === 'TOTAL' || sortConfig.key === 'PAGO') {
-          const numA = parseCurrency(valA);
-          const numB = parseCurrency(valB);
-          return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
-        }
-
-        // Ordenação Numérica por Ano
-        if (sortConfig.key === 'ANO') {
-          const numA = parseInt(valA) || 0;
-          const numB = parseInt(valB) || 0;
-          return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
-        }
-
-        // Ordenação Numérica Inteligente para Número da Emenda (ex: 2071/2023) e SGPe (ex: SCC 2454/2024)
-        if (sortConfig.key === 'NÚMERO DA EMENDA' || sortConfig.key === 'SGPe') {
-          const strA = String(valA || '').replace(/[^\d/]/g, '');
-          const strB = String(valB || '').replace(/[^\d/]/g, '');
-          const partsA = strA.split('/');
-          const partsB = strB.split('/');
-          const numA = parseInt(partsA[0]) || 0;
-          const yearA = parseInt(partsA[1]) || 0;
-          const numB = parseInt(partsB[0]) || 0;
-          const yearB = parseInt(partsB[1]) || 0;
-
-          if (yearA !== yearB) {
-            return sortConfig.direction === 'asc' ? yearA - yearB : yearB - yearA;
-          }
-          return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
-        }
-
-        // Ordenação Alfabética e Alfanumérica em Português (respeitando acentos e números)
-        const strA = String(valA || '').trim();
-        const strB = String(valB || '').trim();
-
-        // Joga células vazias para o final na ordenação crescente
-        if (!strA && strB) return 1;
-        if (strA && !strB) return -1;
-
-        const cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base', numeric: true });
-        return sortConfig.direction === 'asc' ? cmp : -cmp;
-      });
-    }
-
-    return result;
+    return sortEmendasList(filtered, sortConfig);
   }, [
     normalizedEmendas,
     searchTerm,
@@ -441,7 +488,7 @@ export default function App() {
     filterMunicipios,
     filterRegioes,
     filterModalidades,
-    filterRazoesSociais,
+    filterEntidades,
     filterTemas,
     filterUOs,
     filterSituacoes,
@@ -449,17 +496,17 @@ export default function App() {
     sortConfig
   ]);
 
-  const handleExportCSV = () => {
-    if (!filteredAndSortedEmendas || filteredAndSortedEmendas.length === 0) {
+  const exportRowsToCSV = (rowsToExport, filename = "emendas_filtradas.csv") => {
+    if (!rowsToExport || rowsToExport.length === 0) {
       alert("Nenhum dado disponível para exportar.");
       return;
     }
 
-    const headers = Array.from(new Set(filteredAndSortedEmendas.flatMap(Object.keys)));
+    const headers = Array.from(new Set(rowsToExport.flatMap(Object.keys)));
     const csvRows = [];
     csvRows.push(headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','));
 
-    filteredAndSortedEmendas.forEach(row => {
+    rowsToExport.forEach(row => {
       const values = headers.map(header => {
         const val = row[header] !== undefined && row[header] !== null ? String(row[header]) : '';
         return `"${val.replace(/"/g, '""')}"`;
@@ -472,34 +519,51 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "emendas_filtradas.csv");
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Cores dos selos de Situação e Modalidade (Carmesim, Azul-Petróleo e Amarelo — zero verde)
   const getSituacaoClasses = (situacao) => {
     const s = String(situacao || '').toLowerCase();
-    if (s === 'pago') return 'bg-sky-700 text-white border-slate-800';
-    if (s.includes('parcial')) return 'bg-sky-100 text-sky-950 border-sky-800';
-    if (s.includes('pagar')) return 'bg-amber-300 text-slate-900 border-slate-800';
-    return 'bg-slate-100 text-slate-800 border-slate-600';
+    if (s === 'pago') return 'bg-sky-700 text-white border-slate-800 hover:bg-sky-800';
+    if (s.includes('parcial')) return 'bg-sky-100 text-sky-950 border-sky-800 hover:bg-sky-200';
+    if (s.includes('pagar')) return 'bg-amber-300 text-slate-900 border-slate-800 hover:bg-amber-400';
+    return 'bg-slate-100 text-slate-800 border-slate-600 hover:bg-slate-200';
   };
 
   const getModalidadeClasses = (modalidade) => {
     const m = String(modalidade || '').toLowerCase();
     if (m.includes('convênio') || m.includes('convenio') || m.includes('entidade')) {
-      return 'bg-rose-50 text-rose-800 border-rose-700';
+      return 'bg-rose-50 text-rose-800 border-rose-700 hover:bg-rose-100';
     }
     if (m.includes('transferência') || m.includes('transferencia')) {
-      return 'bg-sky-50 text-sky-800 border-sky-700';
+      return 'bg-sky-50 text-sky-800 border-sky-700 hover:bg-sky-100';
     }
     if (m.includes('execução') || m.includes('execucao') || m.includes('órgão')) {
-      return 'bg-amber-50 text-amber-900 border-amber-600';
+      return 'bg-amber-50 text-amber-900 border-amber-600 hover:bg-amber-100';
     }
-    return 'bg-slate-50 text-slate-700 border-slate-400';
+    return 'bg-slate-50 text-slate-700 border-slate-400 hover:bg-slate-100';
   };
+
+  const sortableFieldsList = [
+    { key: 'NÚMERO DA EMENDA', label: 'Número da Emenda' },
+    { key: 'ANO', label: 'Ano' },
+    { key: 'REGIÃO', label: 'Região' },
+    { key: 'MUNICÍPIO', label: 'Município' },
+    { key: 'MODALIDADE', label: 'Modalidade' },
+    { key: 'RAZÃO SOCIAL', label: 'Entidade' },
+    { key: 'OBJETO', label: 'Objeto' },
+    { key: 'UNIDADE ORÇAMENTÁRIA', label: 'Unidade Orçamentária' },
+    { key: 'SGPe', label: 'SGPe' },
+    { key: 'TEMA', label: 'Tema' },
+    { key: 'ARTICULADOR', label: 'Articulador' },
+    { key: 'LIDERANÇA', label: 'Liderança' },
+    { key: 'SITUAÇÃO', label: 'Situação' },
+    { key: 'TOTAL', label: 'Valor Total' },
+    { key: 'PAGO', label: 'Valor Pago' }
+  ];
 
   const MultiSelect = ({ id, label, options, selected, onChange }) => {
     const isOpen = openDropdown === id;
@@ -536,7 +600,7 @@ export default function App() {
       <div className="relative w-full sm:w-auto">
         <div
           onClick={handleToggleDropdown}
-          className={`px-3 py-2 bg-white border transition-colors font-bold uppercase text-xs cursor-pointer flex justify-between items-center w-full sm:min-w-[150px] sm:max-w-[205px] ${
+          className={`px-3 py-2 bg-white border transition-colors font-bold uppercase text-xs cursor-pointer flex justify-between items-center w-full sm:min-w-[150px] sm:max-w-[215px] ${
             selected.length > 0
               ? 'border-sky-700 bg-sky-50 text-sky-950 shadow-[2px_2px_0_0_#0369a1]'
               : 'border-slate-800 text-slate-900 hover:bg-slate-50'
@@ -593,7 +657,7 @@ export default function App() {
       filterMunicipios.length > 0 ||
       filterRegioes.length > 0 ||
       filterModalidades.length > 0 ||
-      filterRazoesSociais.length > 0 ||
+      filterEntidades.length > 0 ||
       filterTemas.length > 0 ||
       filterUOs.length > 0 ||
       filterSituacoes.length > 0 ||
@@ -623,15 +687,14 @@ export default function App() {
           )}
         </div>
 
-        {/* Grade responsiva: 2 colunas no Moto G86 / mobile e flex-wrap no desktop */}
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-2.5 items-center">
           <MultiSelect id="mod" label="Modalidade" options={modalidades} selected={filterModalidades} onChange={setFilterModalidades} />
-          <MultiSelect id="raz" label="Entidade" options={razoesSociais} selected={filterRazoesSociais} onChange={setFilterRazoesSociais} />
+          <MultiSelect id="ent" label="Entidade" options={entidades} selected={filterEntidades} onChange={setFilterEntidades} />
           <MultiSelect id="art" label="Articulador" options={articuladores} selected={filterArticuladores} onChange={setFilterArticuladores} />
           <MultiSelect id="mun" label="Município" options={municipios} selected={filterMunicipios} onChange={setFilterMunicipios} />
           <MultiSelect id="reg" label="Região" options={regioes} selected={filterRegioes} onChange={setFilterRegioes} />
           <MultiSelect id="tem" label="Tema" options={temas} selected={filterTemas} onChange={setFilterTemas} />
-          <MultiSelect id="uo" label="Secretaria/UO" options={unidadesOrcamentarias} selected={filterUOs} onChange={setFilterUOs} />
+          <MultiSelect id="uo" label="Unidade Orçamentária" options={unidadesOrcamentarias} selected={filterUOs} onChange={setFilterUOs} />
           <MultiSelect id="sit" label="Situação" options={situacoes} selected={filterSituacoes} onChange={setFilterSituacoes} />
           <MultiSelect id="ano" label="Ano" options={anos} selected={filterAnos} onChange={setFilterAnos} />
         </div>
@@ -641,7 +704,6 @@ export default function App() {
 
   const Navbar = () => (
     <nav className="bg-white border-b-2 border-slate-800 sticky top-0 z-20 print:hidden">
-      {/* Detalhe Mondrian Superior (Carmesim / Azul-Petróleo / Amarelo) */}
       <div className="h-1.5 w-full flex border-b border-slate-800">
         <div className="w-1/3 bg-rose-700"></div>
         <div className="w-1/3 bg-sky-700"></div>
@@ -727,19 +789,20 @@ export default function App() {
     </div>
   );
 
-  const ListView = () => {
+  // Renderizador compartilhado de Tabela / Cards de Emendas (usado no Painel Principal e dentro das Fichas de Cruzamento)
+  const renderEmendasTableOrCards = (rows, activeSortConfig, onRequestSort, activeViewMode) => {
     const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
-      const isActive = sortConfig?.key === sortKey;
+      const isActive = activeSortConfig?.key === sortKey;
       return (
         <th
           className={`py-2.5 text-left text-[11px] font-black text-slate-900 uppercase cursor-pointer hover:bg-amber-300/80 transition-colors border-r border-slate-800 print:border-slate-800 select-none ${extraClasses}`}
-          onClick={() => requestSort(sortKey)}
+          onClick={() => onRequestSort(sortKey)}
           title={`Ordenar por ${label}`}
         >
           <div className="flex items-center justify-between space-x-1">
             <span>{label}</span>
             {isActive ? (
-              sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3.5 h-3.5 flex-shrink-0" /> : <ChevronDownIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              activeSortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3.5 h-3.5 flex-shrink-0" /> : <ChevronDownIcon className="w-3.5 h-3.5 flex-shrink-0" />
             ) : (
               <ChevronUpIcon className="w-3.5 h-3.5 opacity-25 print:hidden flex-shrink-0" />
             )}
@@ -748,78 +811,702 @@ export default function App() {
       );
     };
 
-    const sortableFields = [
-      { key: 'NÚMERO DA EMENDA', label: 'Número da Emenda' },
-      { key: 'ANO', label: 'Ano' },
-      { key: 'REGIÃO', label: 'Região' },
-      { key: 'MUNICÍPIO', label: 'Município' },
-      { key: 'MODALIDADE', label: 'Modalidade' },
-      { key: 'RAZÃO SOCIAL', label: 'Razão Social (Entidade)' },
-      { key: 'OBJETO', label: 'Objeto' },
-      { key: 'UNIDADE ORÇAMENTÁRIA', label: 'Secretaria / UO' },
-      { key: 'SGPe', label: 'SGPe' },
-      { key: 'TEMA', label: 'Tema' },
-      { key: 'ARTICULADOR', label: 'Articulador' },
-      { key: 'LIDERANÇA', label: 'Liderança' },
-      { key: 'SITUAÇÃO', label: 'Situação' },
-      { key: 'TOTAL', label: 'Valor Total' },
-      { key: 'PAGO', label: 'Valor Pago' }
-    ];
+    if (activeViewMode === 'table') {
+      return (
+        <div className="bg-white border-2 border-slate-800 overflow-x-auto shadow-[4px_4px_0_0_#1e293b] print:shadow-none print:border print:overflow-visible print:w-full">
+          <table className="min-w-[1300px] w-full border-collapse table-fixed print:min-w-0 print:w-full">
+            <thead className="bg-amber-200 border-b-2 border-slate-800 print:bg-amber-200">
+              <tr>
+                <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="w-[88px] px-2.5 print:w-[7%]" />
+                <SortableHeader label="Região" sortKey="REGIÃO" extraClasses="w-[120px] px-2.5 print:w-[9%]" />
+                <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="w-[130px] px-2.5 print:w-[10%]" />
+                <SortableHeader label="Modalidade" sortKey="MODALIDADE" extraClasses="w-[140px] px-2.5 print:w-[10%]" />
+                <SortableHeader label="Entidade" sortKey="RAZÃO SOCIAL" extraClasses="w-[185px] px-2.5 print:w-[14%]" />
+                <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="w-auto px-3 print:w-auto" />
+                <SortableHeader label="Unidade Orçamentária" sortKey="UNIDADE ORÇAMENTÁRIA" extraClasses="w-[125px] px-2.5 print:w-[8%]" />
+                <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="w-[110px] px-2.5 print:w-[8%]" />
+                <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="w-[105px] px-2.5 print:w-[8%]" />
+                <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-[115px] px-2.5 print:w-[8%]" />
+                <SortableHeader label="Pago" sortKey="PAGO" extraClasses="w-[115px] px-2.5 border-r-0 print:w-[8%]" />
+              </tr>
+            </thead>
+            <tbody className="bg-white print:text-[9px]">
+              {rows.map((emenda, idx) => (
+                <tr
+                  key={emenda['NÚMERO DA EMENDA'] || idx}
+                  onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
+                  className="hover:bg-amber-50/60 cursor-pointer border-b border-slate-300 transition-colors print:break-inside-avoid print:cursor-auto"
+                >
+                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal">
+                    {emenda['NÚMERO DA EMENDA']}
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda.REGIÃO && openEntityFicha('regiao', emenda.REGIÃO, e)}
+                    className="px-2.5 py-2 text-[11px] print:text-[9px] font-semibold uppercase text-slate-700 hover:text-sky-700 hover:underline border-r border-slate-300 truncate print:whitespace-normal"
+                    title={emenda.REGIÃO ? `Abrir Ficha da Região: ${emenda.REGIÃO}` : ''}
+                  >
+                    {emenda.REGIÃO || '-'}
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda['MUNICÍPIO'] && openEntityFicha('municipio', emenda['MUNICÍPIO'], e)}
+                    className="px-2.5 py-2 text-xs print:text-[9px] font-bold uppercase text-sky-700 hover:text-rose-700 hover:underline border-r border-slate-300 truncate print:whitespace-normal"
+                    title={emenda['MUNICÍPIO'] ? `Abrir Ficha do Município: ${emenda['MUNICÍPIO']}` : ''}
+                  >
+                    {emenda['MUNICÍPIO']}
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda.MODALIDADE && openEntityFicha('modalidade', emenda.MODALIDADE, e)}
+                    className="px-2.5 py-2 border-r border-slate-300 align-middle"
+                  >
+                    <span
+                      className={`block w-full text-center border px-1.5 py-0.5 text-[10px] print:text-[8px] font-bold uppercase truncate print:whitespace-normal transition-colors ${getModalidadeClasses(emenda.MODALIDADE)}`}
+                      title={emenda.MODALIDADE ? `Abrir Ficha da Modalidade: ${emenda.MODALIDADE}` : ''}
+                    >
+                      {emenda.MODALIDADE || '-'}
+                    </span>
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda['RAZÃO SOCIAL'] && openEntityFicha('entidade', emenda['RAZÃO SOCIAL'], e)}
+                    className={`px-2.5 py-2 text-xs print:text-[9px] font-semibold border-r border-slate-300 truncate print:whitespace-normal ${
+                      emenda['RAZÃO SOCIAL'] ? 'text-slate-900 hover:text-rose-700 hover:underline' : 'text-slate-400'
+                    }`}
+                    title={emenda['RAZÃO SOCIAL'] ? `Abrir Ficha da Entidade: ${emenda['RAZÃO SOCIAL']}` : ''}
+                  >
+                    {emenda['RAZÃO SOCIAL'] || '-'}
+                  </td>
+
+                  <td className="px-3 py-2 text-xs print:text-[9px] text-slate-800 font-medium border-r border-slate-300 line-clamp-2 print:line-clamp-none print:whitespace-normal print:break-words" title={emenda.OBJETO}>
+                    {emenda.OBJETO}
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda['UNIDADE ORÇAMENTÁRIA'] && openEntityFicha('uo', emenda['UNIDADE ORÇAMENTÁRIA'], e)}
+                    className="px-2.5 py-2 text-[11px] print:text-[9px] font-bold uppercase text-slate-700 hover:text-sky-700 hover:underline border-r border-slate-300 truncate text-center"
+                    title={emenda['UNIDADE ORÇAMENTÁRIA'] ? `Abrir Ficha da Unidade Orçamentária: ${emenda['UNIDADE ORÇAMENTÁRIA']}` : ''}
+                  >
+                    {emenda['UNIDADE ORÇAMENTÁRIA'] || '-'}
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda.ARTICULADOR && openEntityFicha('articulador', emenda.ARTICULADOR, e)}
+                    className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-rose-700 hover:text-sky-700 hover:underline border-r border-slate-300 truncate print:whitespace-normal"
+                    title={emenda.ARTICULADOR ? `Abrir Ficha do Articulador: ${emenda.ARTICULADOR}` : ''}
+                  >
+                    {emenda.ARTICULADOR || '-'}
+                  </td>
+
+                  <td
+                    onClick={(e) => emenda.SITUAÇÃO && openEntityFicha('situacao', emenda.SITUAÇÃO, e)}
+                    className="px-2.5 py-2 border-r border-slate-300 align-middle"
+                  >
+                    <span
+                      className={`block w-full text-center border px-1 py-0.5 text-[10px] print:text-[8px] font-bold uppercase truncate print:whitespace-normal transition-colors ${getSituacaoClasses(emenda.SITUAÇÃO)}`}
+                      title={emenda.SITUAÇÃO ? `Abrir Ficha da Situação: ${emenda.SITUAÇÃO}` : ''}
+                    >
+                      {emenda.SITUAÇÃO || 'Indefinida'}
+                    </span>
+                  </td>
+
+                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal text-right">
+                    {formatCurrency(parseCurrency(emenda.TOTAL))}
+                  </td>
+
+                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-sky-800 truncate print:whitespace-normal text-right border-r-0">
+                    {parseCurrency(emenda.PAGO) > 0 ? formatCurrency(parseCurrency(emenda.PAGO)) : '-'}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan="11" className="px-6 py-10 text-center font-bold text-slate-400 uppercase text-xs">
+                    Nenhuma emenda encontrada.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="bg-slate-50 px-4 py-2.5 font-bold text-xs text-slate-800 flex flex-wrap justify-between gap-2 border-t border-slate-800 print:hidden">
+            <span>Exibindo {rows.length} registros</span>
+            <span className="text-slate-500">Clique em qualquer Região, Município, Modalidade, Entidade, Unidade Orçamentária, Articulador ou Situação para abrir sua Ficha</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 print:grid-cols-2 print:gap-4">
+        {rows.map((emenda, idx) => (
+          <div
+            key={emenda['NÚMERO DA EMENDA'] || idx}
+            className="border-2 border-slate-800 bg-white shadow-[4px_4px_0_0_#1e293b] print:shadow-none flex flex-col hover:-translate-y-0.5 transition-transform cursor-pointer print:break-inside-avoid print:cursor-auto"
+            onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
+          >
+            <div className="bg-amber-200 border-b-2 border-slate-800 p-3 flex justify-between items-center print:bg-amber-200">
+              <div className="flex items-center space-x-2">
+                <span className="font-black text-slate-900 text-base tracking-tight print:text-sm">
+                  #{emenda['NÚMERO DA EMENDA']}
+                </span>
+                {emenda['UNIDADE ORÇAMENTÁRIA'] && (
+                  <button
+                    onClick={(e) => openEntityFicha('uo', emenda['UNIDADE ORÇAMENTÁRIA'], e)}
+                    className="bg-white border border-slate-800 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-800 hover:bg-sky-700 hover:text-white transition-colors"
+                    title={`Abrir Ficha da Unidade Orçamentária: ${emenda['UNIDADE ORÇAMENTÁRIA']}`}
+                  >
+                    {emenda['UNIDADE ORÇAMENTÁRIA']}
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={(e) => emenda.SITUAÇÃO && openEntityFicha('situacao', emenda.SITUAÇÃO, e)}
+                className={`border px-2 py-0.5 text-[10px] font-bold uppercase transition-colors ${getSituacaoClasses(emenda.SITUAÇÃO)}`}
+                title={`Abrir Ficha da Situação: ${emenda.SITUAÇÃO}`}
+              >
+                {emenda.SITUAÇÃO || 'Indefinida'}
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 flex flex-col space-y-2.5 print:p-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  onClick={(e) => emenda['MUNICÍPIO'] && openEntityFicha('municipio', emenda['MUNICÍPIO'], e)}
+                  className="flex items-center text-left hover:underline"
+                  title={`Abrir Ficha do Município: ${emenda['MUNICÍPIO']}`}
+                >
+                  <MapPinIcon className="h-4 w-4 mr-1 text-sky-700 print:text-slate-900" />
+                  <span className="text-sky-700 font-bold uppercase text-xs sm:text-sm print:text-slate-900">{emenda['MUNICÍPIO']}</span>
+                </button>
+                {emenda.REGIÃO && (
+                  <button
+                    onClick={(e) => openEntityFicha('regiao', emenda.REGIÃO, e)}
+                    className="flex items-center text-left hover:underline"
+                    title={`Abrir Ficha da Região: ${emenda.REGIÃO}`}
+                  >
+                    <MapIcon className="h-3.5 w-3.5 mr-1 text-slate-600" />
+                    <span className="text-slate-600 font-bold uppercase text-[11px]">{emenda.REGIÃO}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between border-t border-b border-slate-200 py-1.5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Modalidade:</span>
+                <button
+                  onClick={(e) => emenda.MODALIDADE && openEntityFicha('modalidade', emenda.MODALIDADE, e)}
+                  className={`border px-2 py-0.5 text-[10px] font-bold uppercase transition-colors ${getModalidadeClasses(emenda.MODALIDADE)}`}
+                  title={`Abrir Ficha da Modalidade: ${emenda.MODALIDADE}`}
+                >
+                  {emenda.MODALIDADE || '-'}
+                </button>
+              </div>
+
+              {emenda['RAZÃO SOCIAL'] && (
+                <div
+                  onClick={(e) => openEntityFicha('entidade', emenda['RAZÃO SOCIAL'], e)}
+                  className="bg-rose-50/70 border-l-2 border-rose-700 px-2.5 py-1.5 hover:bg-rose-100/80 transition-colors"
+                  title={`Abrir Ficha da Entidade: ${emenda['RAZÃO SOCIAL']}`}
+                >
+                  <p className="text-[10px] font-bold uppercase text-rose-700">Entidade</p>
+                  <p className="text-xs font-bold text-slate-900 break-words underline-offset-2 hover:underline">{emenda['RAZÃO SOCIAL']}</p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-[10px] font-bold uppercase text-slate-400 mb-0.5">Objeto</p>
+                <p className="text-xs sm:text-sm font-medium text-slate-800 line-clamp-3 flex-1 print:line-clamp-none print:text-xs">
+                  {emenda.OBJETO}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border-t-2 border-slate-800 p-3.5 flex justify-between items-end print:p-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase text-slate-500 mb-0.5">Articulador</p>
+                <button
+                  onClick={(e) => emenda.ARTICULADOR && openEntityFicha('articulador', emenda.ARTICULADOR, e)}
+                  className="text-rose-700 font-bold text-xs sm:text-sm uppercase truncate max-w-[140px] hover:underline text-left block"
+                  title={emenda.ARTICULADOR ? `Abrir Ficha do Articulador: ${emenda.ARTICULADOR}` : ''}
+                >
+                  {emenda.ARTICULADOR || '-'}
+                </button>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase text-slate-500 mb-0.5">Total</p>
+                <p className="font-black text-slate-900 text-base sm:text-lg leading-none print:text-sm">
+                  {formatCurrency(parseCurrency(emenda.TOTAL))}
+                </p>
+                {parseCurrency(emenda.PAGO) > 0 && (
+                  <p className="text-[11px] font-bold text-sky-800 mt-1">
+                    Pago: {formatCurrency(parseCurrency(emenda.PAGO))}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <div className="col-span-full py-12 text-center font-bold text-slate-500 uppercase border-2 border-slate-400 border-dashed text-xs">
+            Nenhuma emenda encontrada.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const ListView = () => (
+    <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 py-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
+      <HeaderSwitcher title="Painel de Emendas" />
+      <FilterBar />
+
+      <div className="flex flex-wrap justify-between gap-3 mb-4 items-center print:hidden">
+        <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
+          <button
+            onClick={() => exportRowsToCSV(filteredAndSortedEmendas, "emendas_filtradas.csv")}
+            className="px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors hover:bg-amber-200 text-slate-900"
+            title="Exportar Filtrados para CSV"
+          >
+            <DownloadIcon className="h-4 w-4" /> <span className="ml-1.5">CSV</span>
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors hover:bg-sky-700 hover:text-white text-slate-900"
+            title="Exportar para PDF / Imprimir"
+          >
+            <PrinterIcon className="h-4 w-4" /> <span className="ml-1.5">PDF</span>
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
+            <select
+              value={sortConfig.key || ''}
+              onChange={(e) => setSortConfig({ key: e.target.value || null, direction: sortConfig.direction })}
+              className="px-2.5 py-1.5 text-xs font-bold uppercase bg-white text-slate-900 focus:outline-none cursor-pointer"
+              title="Escolher campo para ordenar"
+            >
+              <option value="">Ordenar por...</option>
+              {sortableFieldsList.map(f => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </select>
+            {sortConfig.key && (
+              <button
+                onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                className="px-2.5 py-1.5 border-l border-slate-800 bg-amber-200 hover:bg-amber-300 text-xs font-black uppercase text-slate-900 flex items-center"
+                title={sortConfig.direction === 'asc' ? 'Ordem Crescente (A-Z / 0-9)' : 'Ordem Decrescente (Z-A / 9-0)'}
+              >
+                {sortConfig.direction === 'asc' ? (
+                  <><ChevronUpIcon className="w-3.5 h-3.5 mr-1" /> Cresc.</>
+                ) : (
+                  <><ChevronDownIcon className="w-3.5 h-3.5 mr-1" /> Decresc.</>
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors ${
+                viewMode === 'table' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
+              }`}
+              title="Visualização em Lista"
+            >
+              <ListIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Lista</span>
+            </button>
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors ${
+                viewMode === 'cards' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
+              }`}
+              title="Visualização em Cards"
+            >
+              <GridIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Cards</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {renderEmendasTableOrCards(filteredAndSortedEmendas, sortConfig, requestSort, viewMode)}
+    </div>
+  );
+
+  // ============================================================================
+  // FICHA INTERATIVA DE CRUZAMENTO DE DADOS (Região, Município, Modalidade, Entidade, Unidade Orçamentária, Situação, Articulador, etc.)
+  // ============================================================================
+  const EntityProfileView = () => {
+    const [fichaSearch, setFichaSearch] = useState('');
+    const [fichaSortConfig, setFichaSortConfig] = useState({ key: 'NÚMERO DA EMENDA', direction: 'desc' });
+    const [fichaViewMode, setFichaViewMode] = useState('table');
+    const [crossSortByDim, setCrossSortByDim] = useState({});
+
+    if (!selectedEntityFicha) return null;
+    const { type, value } = selectedEntityFicha;
+    const meta = ENTITY_TYPE_META[type] || { label: 'Categoria', plural: 'Categorias', field: type };
+
+    // Todas as emendas pertencentes a esta Ficha
+    const baseEntityEmendas = useMemo(() => {
+      return normalizedEmendas.filter(e => {
+        const cellVal = String(e[meta.field] || '').trim();
+        return cellVal.toLowerCase() === String(value).trim().toLowerCase();
+      });
+    }, [normalizedEmendas, meta.field, value]);
+
+    // Emendas filtradas pela busca interna da Ficha e ordenadas pelo usuário
+    const fichaEmendas = useMemo(() => {
+      const filtered = baseEntityEmendas.filter(e =>
+        fichaSearch === '' || JSON.stringify(e).toLowerCase().includes(fichaSearch.toLowerCase())
+      );
+      return sortEmendasList(filtered, fichaSortConfig);
+    }, [baseEntityEmendas, fichaSearch, fichaSortConfig]);
+
+    const requestFichaSort = (key) => {
+      let direction = 'asc';
+      if (fichaSortConfig && fichaSortConfig.key === key && fichaSortConfig.direction === 'asc') {
+        direction = 'desc';
+      }
+      setFichaSortConfig({ key, direction });
+    };
+
+    // Indicadores Globais da Ficha
+    const totalPrevisto = baseEntityEmendas.reduce((acc, e) => acc + parseCurrency(e.TOTAL), 0);
+    const totalPago = baseEntityEmendas.reduce((acc, e) => acc + parseCurrency(e.PAGO), 0);
+    const saldoPagar = Math.max(totalPrevisto - totalPago, 0);
+    const pctExecutado = totalPrevisto > 0 ? (totalPago / totalPrevisto) * 100 : 0;
+
+    // Constrói os cruzamentos de dados para todas as outras dimensões
+    const buildBreakdown = (dimType) => {
+      const dimMeta = ENTITY_TYPE_META[dimType];
+      const map = {};
+      baseEntityEmendas.forEach(e => {
+        const raw = String(e[dimMeta.field] || '').trim();
+        const key = raw || 'Não informado';
+        if (!map[key]) {
+          map[key] = { name: key, isValid: Boolean(raw), count: 0, total: 0, pago: 0 };
+        }
+        map[key].count += 1;
+        map[key].total += parseCurrency(e.TOTAL);
+        map[key].pago += parseCurrency(e.PAGO);
+      });
+
+      const items = Object.values(map);
+      const sortConf = crossSortByDim[dimType] || { key: 'total', direction: 'desc' };
+
+      items.sort((a, b) => {
+        if (sortConf.key === 'name') {
+          const cmp = a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true });
+          return sortConf.direction === 'asc' ? cmp : -cmp;
+        }
+        const diff = a[sortConf.key] - b[sortConf.key];
+        return sortConf.direction === 'asc' ? diff : -diff;
+      });
+
+      return items;
+    };
+
+    const toggleCrossSort = (dimType, key) => {
+      setCrossSortByDim(prev => {
+        const current = prev[dimType] || { key: 'total', direction: 'desc' };
+        const nextDir = current.key === key && current.direction === 'desc' ? 'asc' : 'desc';
+        return { ...prev, [dimType]: { key, direction: nextDir } };
+      });
+    };
+
+    // Quais dimensões exibir no cruzamento (todas exceto a própria dimensão da ficha)
+    const crossDimensions = [
+      'municipio',
+      'regiao',
+      'modalidade',
+      'entidade',
+      'uo',
+      'articulador',
+      'situacao',
+      'tema',
+      'ano',
+      'lideranca'
+    ].filter(d => d !== type);
+
+    // Lista detalhada de lideranças com contatos vinculados a esta Ficha
+    const liderancasDetalhadas = useMemo(() => {
+      const map = {};
+      baseEntityEmendas.forEach(e => {
+        const lid = String(e.LIDERANÇA || '').trim();
+        if (!lid) return;
+        if (!map[lid]) {
+          map[lid] = {
+            nome: lid,
+            telefone: e['TELEFONE DA LIDERANÇA'] || '',
+            email: e['EMAIL DA LIDERANÇA'] || '',
+            municipio: e['MUNICÍPIO'] || '',
+            count: 0,
+            total: 0
+          };
+        }
+        map[lid].count += 1;
+        map[lid].total += parseCurrency(e.TOTAL);
+        if (!map[lid].telefone && e['TELEFONE DA LIDERANÇA']) map[lid].telefone = e['TELEFONE DA LIDERANÇA'];
+        if (!map[lid].email && e['EMAIL DA LIDERANÇA']) map[lid].email = e['EMAIL DA LIDERANÇA'];
+      });
+      return Object.values(map).sort((a, b) => b.total - a.total);
+    }, [baseEntityEmendas]);
+
+    const uniqueCounts = {
+      municipios: new Set(baseEntityEmendas.map(e => e['MUNICÍPIO']).filter(Boolean)).size,
+      regioes: new Set(baseEntityEmendas.map(e => e.REGIÃO).filter(Boolean)).size,
+      articuladores: new Set(baseEntityEmendas.map(e => e.ARTICULADOR).filter(Boolean)).size,
+      modalidades: new Set(baseEntityEmendas.map(e => e.MODALIDADE).filter(Boolean)).size,
+      entidades: new Set(baseEntityEmendas.map(e => e['RAZÃO SOCIAL']).filter(Boolean)).size,
+      uos: new Set(baseEntityEmendas.map(e => e['UNIDADE ORÇAMENTÁRIA']).filter(Boolean)).size,
+      temas: new Set(baseEntityEmendas.map(e => e.TEMA).filter(Boolean)).size,
+      liderancas: new Set(baseEntityEmendas.map(e => e.LIDERANÇA).filter(Boolean)).size
+    };
 
     return (
       <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 py-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        <HeaderSwitcher title="Painel de Emendas" />
-        <FilterBar />
-
-        {/* Nota Informativa SEF/SC solicitada para os Articuladores */}
-        <div className="bg-amber-50 border border-slate-800 px-3.5 py-2 mb-4 flex items-center text-xs text-slate-800 shadow-[2px_2px_0_0_#1e293b] print:hidden">
-          <InfoIcon className="w-4 h-4 mr-2 text-rose-700 flex-shrink-0" />
-          <span>
-            <strong>Status SEF/SC:</strong> A situação reflete a execução financeira final na Secretaria da Fazenda (<strong>Pago</strong>, <strong>Pago Parcial</strong> ou <strong>A Pagar</strong>). Emendas em <em>Pago Parcial</em> ou <em>Pago</em> já concluíram todas as etapas anteriores de tramitação no SGPe.
-          </span>
-        </div>
-
-        {/* Barra de Ferramentas: Exportação (CSV / PDF), Ordenação Universal e Alternância Lista/Cards */}
-        <div className="flex flex-wrap justify-between gap-3 mb-4 items-center print:hidden">
-          {/* Botões de Exportação (CSV / PDF) */}
-          <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
+        {/* Barra Superior de Navegação da Ficha */}
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-5 print:hidden">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handleExportCSV}
-              className="px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors hover:bg-amber-200 text-slate-900"
-              title="Exportar Filtrados para CSV"
+              onClick={goBackFromEntityFicha}
+              className="bg-slate-900 text-white px-4 py-2 font-bold uppercase text-xs border border-slate-800 hover:bg-slate-800 flex items-center shadow-[3px_3px_0_0_#1e293b]"
             >
-              <DownloadIcon className="h-4 w-4" /> <span className="ml-1.5">CSV</span>
+              &larr; {entityHistory.length > 0 ? `Voltar para ${entityHistory[entityHistory.length - 1].value}` : 'Voltar ao Painel'}
+            </button>
+            {entityHistory.length > 0 && (
+              <button
+                onClick={resetToFrontPage}
+                className="bg-white text-slate-900 px-3 py-2 font-bold uppercase text-xs border border-slate-800 hover:bg-slate-100 shadow-[2px_2px_0_0_#1e293b]"
+              >
+                Início
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => applyEntityFilterToMainList(type, value)}
+              className="bg-amber-300 text-slate-900 px-3.5 py-2 font-bold uppercase text-xs border border-slate-800 hover:bg-amber-400 flex items-center shadow-[2px_2px_0_0_#1e293b]"
+              title="Aplicar como filtro no Quadro Geral"
+            >
+              <FilterIcon className="h-3.5 w-3.5 mr-1.5" /> Filtrar no Quadro Geral
+            </button>
+            <button
+              onClick={() => exportRowsToCSV(fichaEmendas, `ficha_${type}_${normalizeStr(value)}.csv`)}
+              className="bg-white text-slate-900 px-3 py-2 font-bold uppercase text-xs border border-slate-800 hover:bg-amber-200 flex items-center shadow-[2px_2px_0_0_#1e293b]"
+            >
+              <DownloadIcon className="h-3.5 w-3.5 mr-1.5" /> CSV
             </button>
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors hover:bg-sky-700 hover:text-white text-slate-900"
-              title="Exportar para PDF / Imprimir"
+              className="bg-sky-700 text-white px-3 py-2 font-bold uppercase text-xs border border-slate-800 hover:bg-sky-800 flex items-center shadow-[2px_2px_0_0_#1e293b]"
             >
-              <PrinterIcon className="h-4 w-4" /> <span className="ml-1.5">PDF</span>
+              <PrinterIcon className="h-3.5 w-3.5 mr-1.5" /> PDF
             </button>
+          </div>
+        </div>
+
+        {/* Cabeçalho Mondrian da Ficha Analítica */}
+        <div className="bg-white border-2 border-slate-800 shadow-[5px_5px_0_0_#1e293b] mb-6 print:shadow-none">
+          <div className="bg-sky-700 border-b-2 border-slate-800 p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:bg-white">
+            <div>
+              <span className="inline-block bg-amber-300 text-slate-900 border border-slate-900 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider mb-2">
+                Ficha de {meta.label} — Cruzamento de Dados
+              </span>
+              <h1 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-tight break-words print:text-slate-900">
+                {value}
+              </h1>
+            </div>
+            <div className="bg-white border-2 border-slate-900 px-4 py-2.5 text-right shadow-[3px_3px_0_0_#1e293b]">
+              <span className="text-[10px] font-black uppercase text-slate-500 block">Total de Emendas</span>
+              <span className="text-2xl font-black text-rose-700">{baseEntityEmendas.length}</span>
+            </div>
+          </div>
+
+          {/* Faixa de Indicadores Financeiros e Multidimensionais da Ficha */}
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-b-2 border-slate-800 bg-slate-50/60">
+            <div className="bg-white border border-slate-800 p-4 shadow-[2px_2px_0_0_#1e293b]">
+              <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Valor Total Previsto</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">{formatCurrency(totalPrevisto)}</p>
+            </div>
+            <div className="bg-white border border-slate-800 p-4 shadow-[2px_2px_0_0_#1e293b]">
+              <p className="text-[10px] font-black uppercase text-sky-700 mb-1">Valor Total Pago</p>
+              <p className="text-xl sm:text-2xl font-black text-sky-700">{formatCurrency(totalPago)}</p>
+              <p className="text-[11px] font-bold text-slate-600 mt-1">{pctExecutado.toFixed(1)}% executado</p>
+            </div>
+            <div className="bg-white border border-slate-800 p-4 shadow-[2px_2px_0_0_#1e293b]">
+              <p className="text-[10px] font-black uppercase text-rose-700 mb-1">Saldo a Pagar</p>
+              <p className="text-xl sm:text-2xl font-black text-rose-700">{formatCurrency(saldoPagar)}</p>
+            </div>
+            <div className="bg-amber-100/90 border border-slate-800 p-4 shadow-[2px_2px_0_0_#1e293b] flex flex-col justify-between">
+              <p className="text-[10px] font-black uppercase text-slate-800 mb-1.5">Abrangência na Ficha</p>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] font-bold text-slate-900">
+                <span>Municípios: {uniqueCounts.municipios}</span>
+                <span>Regiões: {uniqueCounts.regioes}</span>
+                <span>Articuladores: {uniqueCounts.articuladores}</span>
+                <span>Modalidades: {uniqueCounts.modalidades}</span>
+                <span>Entidades: {uniqueCounts.entidades}</span>
+                <span>Unid. Orç.: {uniqueCounts.uos}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Grade de Cruzamento de Dados Interativa (Ordenável Alfabética e Numericamente em cada dimensão) */}
+          <div className="p-5">
+            <h2 className="text-sm sm:text-base font-black uppercase text-slate-900 tracking-wider mb-4 flex items-center">
+              <span className="w-2.5 h-5 bg-rose-700 border border-slate-900 mr-2"></span>
+              Cruzamento de Dados ({value}) — Clique nos cabeçalhos para ordenar ou em qualquer item para abrir sua Ficha
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {crossDimensions.map(dimKey => {
+                const dimMeta = ENTITY_TYPE_META[dimKey];
+                const rows = buildBreakdown(dimKey);
+                const sortConf = crossSortByDim[dimKey] || { key: 'total', direction: 'desc' };
+
+                const CrossSortHeader = ({ label, colKey, align = 'left' }) => {
+                  const active = sortConf.key === colKey;
+                  return (
+                    <th
+                      onClick={() => toggleCrossSort(dimKey, colKey)}
+                      className={`py-1.5 px-2 text-[10px] font-black uppercase text-slate-900 cursor-pointer hover:bg-amber-300 select-none border-b border-slate-800 ${
+                        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                      }`}
+                      title={`Ordenar ${dimMeta.plural} por ${label}`}
+                    >
+                      <span className="inline-flex items-center gap-0.5">
+                        {label}
+                        {active && (sortConf.direction === 'asc' ? ' ▲' : ' ▼')}
+                      </span>
+                    </th>
+                  );
+                };
+
+                return (
+                  <div key={dimKey} className="border border-slate-800 bg-white shadow-[3px_3px_0_0_#1e293b] flex flex-col">
+                    <div className="bg-amber-200 border-b border-slate-800 px-3 py-2 flex justify-between items-center">
+                      <span className="font-black text-xs uppercase text-slate-900">{dimMeta.plural}</span>
+                      <span className="bg-white border border-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-slate-800">
+                        {rows.filter(r => r.isValid).length}
+                      </span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto flex-1">
+                      <table className="w-full border-collapse text-xs">
+                        <thead className="bg-slate-100 sticky top-0 z-10">
+                          <tr>
+                            <CrossSortHeader label={dimMeta.label} colKey="name" align="left" />
+                            <CrossSortHeader label="Qtd" colKey="count" align="center" />
+                            <CrossSortHeader label="Total" colKey="total" align="right" />
+                            <CrossSortHeader label="Pago" colKey="pago" align="right" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {rows.map((item, i) => (
+                            <tr
+                              key={i}
+                              onClick={() => item.isValid && openEntityFicha(dimKey, item.name)}
+                              className={item.isValid ? "hover:bg-sky-50 cursor-pointer transition-colors" : "text-slate-400 italic"}
+                              title={item.isValid ? `Abrir Ficha de ${dimMeta.label}: ${item.name}` : ''}
+                            >
+                              <td className="py-1.5 px-2 font-bold text-[11px] text-sky-800 hover:underline truncate max-w-[140px]">
+                                {item.name}
+                              </td>
+                              <td className="py-1.5 px-2 text-center font-bold text-[11px] text-slate-800">
+                                {item.count}
+                              </td>
+                              <td className="py-1.5 px-2 text-right font-bold text-[11px] text-slate-900 whitespace-nowrap">
+                                {formatCurrency(item.total)}
+                              </td>
+                              <td className="py-1.5 px-2 text-right font-semibold text-[11px] text-sky-700 whitespace-nowrap">
+                                {item.pago > 0 ? formatCurrency(item.pago) : '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Se houver Lideranças cadastradas com contato, mostra quadro rápido de Lideranças da Ficha */}
+            {liderancasDetalhadas.length > 0 && (
+              <div className="mt-6 border border-slate-800 bg-white shadow-[3px_3px_0_0_#1e293b]">
+                <div className="bg-rose-700 text-white border-b border-slate-800 px-3.5 py-2 flex justify-between items-center">
+                  <span className="font-black text-xs uppercase tracking-wider">
+                    Lideranças e Contatos Vinculados ({liderancasDetalhadas.length})
+                  </span>
+                </div>
+                <div className="overflow-x-auto max-h-60">
+                  <table className="w-full border-collapse text-xs">
+                    <thead className="bg-slate-100 border-b border-slate-800">
+                      <tr>
+                        <th className="py-2 px-3 text-left text-[10px] font-black uppercase">Liderança</th>
+                        <th className="py-2 px-3 text-left text-[10px] font-black uppercase">Município</th>
+                        <th className="py-2 px-3 text-left text-[10px] font-black uppercase">Telefone</th>
+                        <th className="py-2 px-3 text-left text-[10px] font-black uppercase">Email</th>
+                        <th className="py-2 px-3 text-center text-[10px] font-black uppercase">Emendas</th>
+                        <th className="py-2 px-3 text-right text-[10px] font-black uppercase">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {liderancasDetalhadas.map((lid, i) => (
+                        <tr
+                          key={i}
+                          onClick={() => openEntityFicha('lideranca', lid.nome)}
+                          className="hover:bg-amber-50 cursor-pointer"
+                        >
+                          <td className="py-2 px-3 font-bold text-rose-700 hover:underline">{lid.nome}</td>
+                          <td className="py-2 px-3 font-semibold text-sky-700">{lid.municipio || '-'}</td>
+                          <td className="py-2 px-3 font-medium text-slate-800">{lid.telefone || '-'}</td>
+                          <td className="py-2 px-3 font-medium text-slate-800">{lid.email || '-'}</td>
+                          <td className="py-2 px-3 text-center font-bold text-slate-900">{lid.count}</td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900">{formatCurrency(lid.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Lista Interativa de Emendas desta Ficha */}
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4 print:hidden">
+          <div className="flex items-center space-x-2 flex-1 min-w-[220px]">
+            <div className="relative flex-1 max-w-md">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <input
+                type="text"
+                placeholder={`Filtrar dentro das ${baseEntityEmendas.length} emendas de ${value}...`}
+                value={fichaSearch}
+                onChange={(e) => setFichaSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-800 text-xs font-medium focus:outline-none focus:border-sky-700"
+              />
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Seletor de Ordenação Universal (funciona tanto em Lista quanto em Cards / Mobile) */}
             <div className="flex items-center border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
               <select
-                value={sortConfig.key || ''}
-                onChange={(e) => setSortConfig({ key: e.target.value || null, direction: sortConfig.direction })}
+                value={fichaSortConfig.key || ''}
+                onChange={(e) => setFichaSortConfig({ key: e.target.value || null, direction: fichaSortConfig.direction })}
                 className="px-2.5 py-1.5 text-xs font-bold uppercase bg-white text-slate-900 focus:outline-none cursor-pointer"
-                title="Escolher campo para ordenar"
               >
-                <option value="">Ordenar por...</option>
-                {sortableFields.map(f => (
+                <option value="">Ordenar emendas da ficha...</option>
+                {sortableFieldsList.map(f => (
                   <option key={f.key} value={f.key}>{f.label}</option>
                 ))}
               </select>
-              {sortConfig.key && (
+              {fichaSortConfig.key && (
                 <button
-                  onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                  onClick={() => setFichaSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
                   className="px-2.5 py-1.5 border-l border-slate-800 bg-amber-200 hover:bg-amber-300 text-xs font-black uppercase text-slate-900 flex items-center"
-                  title={sortConfig.direction === 'asc' ? 'Ordem Crescente (A-Z / 0-9)' : 'Ordem Decrescente (Z-A / 9-0)'}
                 >
-                  {sortConfig.direction === 'asc' ? (
+                  {fichaSortConfig.direction === 'asc' ? (
                     <><ChevronUpIcon className="w-3.5 h-3.5 mr-1" /> Cresc.</>
                   ) : (
                     <><ChevronDownIcon className="w-3.5 h-3.5 mr-1" /> Decresc.</>
@@ -828,23 +1515,20 @@ export default function App() {
               )}
             </div>
 
-            {/* Alternância Lista / Cards */}
             <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
               <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors ${
-                  viewMode === 'table' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
+                onClick={() => setFichaViewMode('table')}
+                className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 ${
+                  fichaViewMode === 'table' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
                 }`}
-                title="Visualização em Lista"
               >
                 <ListIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Lista</span>
               </button>
               <button
-                onClick={() => setViewMode('cards')}
-                className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors ${
-                  viewMode === 'cards' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
+                onClick={() => setFichaViewMode('cards')}
+                className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs ${
+                  fichaViewMode === 'cards' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
                 }`}
-                title="Visualização em Cards"
               >
                 <GridIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Cards</span>
               </button>
@@ -852,191 +1536,7 @@ export default function App() {
           </div>
         </div>
 
-        {viewMode === 'table' ? (
-          <div className="bg-white border-2 border-slate-800 overflow-x-auto shadow-[4px_4px_0_0_#1e293b] print:shadow-none print:border print:overflow-visible print:w-full">
-            <table className="min-w-[1250px] w-full border-collapse table-fixed print:min-w-0 print:w-full">
-              <thead className="bg-amber-200 border-b-2 border-slate-800 print:bg-amber-200">
-                <tr>
-                  <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="w-[88px] px-2.5 print:w-[7%]" />
-                  <SortableHeader label="Região" sortKey="REGIÃO" extraClasses="w-[115px] px-2.5 print:w-[9%]" />
-                  <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="w-[130px] px-2.5 print:w-[10%]" />
-                  <SortableHeader label="Modalidade" sortKey="MODALIDADE" extraClasses="w-[140px] px-2.5 print:w-[10%]" />
-                  <SortableHeader label="Razão Social (Entidade)" sortKey="RAZÃO SOCIAL" extraClasses="w-[190px] px-2.5 print:w-[15%]" />
-                  <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="w-auto px-3 print:w-auto" />
-                  <SortableHeader label="UO" sortKey="UNIDADE ORÇAMENTÁRIA" extraClasses="w-[75px] px-2 print:w-[6%]" />
-                  <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="w-[110px] px-2.5 print:w-[9%]" />
-                  <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="w-[105px] px-2.5 print:w-[8%]" />
-                  <SortableHeader label="Total" sortKey="TOTAL" extraClasses="w-[115px] px-2.5 print:w-[9%]" />
-                  <SortableHeader label="Pago" sortKey="PAGO" extraClasses="w-[115px] px-2.5 border-r-0 print:w-[9%]" />
-                </tr>
-              </thead>
-              <tbody className="bg-white print:text-[9px]">
-                {filteredAndSortedEmendas.map((emenda, idx) => (
-                  <tr
-                    key={emenda['NÚMERO DA EMENDA'] || idx}
-                    onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
-                    className="hover:bg-amber-50/60 cursor-pointer border-b border-slate-300 transition-colors print:break-inside-avoid print:cursor-auto"
-                  >
-                    <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal">
-                      {emenda['NÚMERO DA EMENDA']}
-                    </td>
-
-                    <td className="px-2.5 py-2 text-[11px] print:text-[9px] font-semibold uppercase text-slate-700 border-r border-slate-300 truncate print:whitespace-normal" title={emenda.REGIÃO}>
-                      {emenda.REGIÃO || '-'}
-                    </td>
-
-                    <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold uppercase text-sky-700 border-r border-slate-300 truncate print:whitespace-normal" title={emenda['MUNICÍPIO']}>
-                      {emenda['MUNICÍPIO']}
-                    </td>
-
-                    <td className="px-2.5 py-2 border-r border-slate-300 align-middle">
-                      <span
-                        className={`block w-full text-center border px-1.5 py-0.5 text-[10px] print:text-[8px] font-bold uppercase truncate print:whitespace-normal ${getModalidadeClasses(emenda.MODALIDADE)}`}
-                        title={emenda.MODALIDADE}
-                      >
-                        {emenda.MODALIDADE || '-'}
-                      </span>
-                    </td>
-
-                    <td className="px-2.5 py-2 text-xs print:text-[9px] font-semibold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal" title={emenda['RAZÃO SOCIAL']}>
-                      {emenda['RAZÃO SOCIAL'] || '-'}
-                    </td>
-
-                    <td className="px-3 py-2 text-xs print:text-[9px] text-slate-800 font-medium border-r border-slate-300 line-clamp-2 print:line-clamp-none print:whitespace-normal print:break-words" title={emenda.OBJETO}>
-                      {emenda.OBJETO}
-                    </td>
-
-                    <td className="px-2 py-2 text-[11px] print:text-[9px] font-bold uppercase text-slate-700 border-r border-slate-300 truncate text-center" title={emenda['UNIDADE ORÇAMENTÁRIA']}>
-                      {emenda['UNIDADE ORÇAMENTÁRIA'] || '-'}
-                    </td>
-
-                    <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-rose-700 border-r border-slate-300 truncate print:whitespace-normal" title={emenda.ARTICULADOR}>
-                      {emenda.ARTICULADOR || '-'}
-                    </td>
-
-                    <td className="px-2.5 py-2 border-r border-slate-300 align-middle">
-                      <span
-                        className={`block w-full text-center border px-1 py-0.5 text-[10px] print:text-[8px] font-bold uppercase truncate print:whitespace-normal ${getSituacaoClasses(emenda.SITUAÇÃO)}`}
-                        title={emenda.SITUAÇÃO}
-                      >
-                        {emenda.SITUAÇÃO || 'Indefinida'}
-                      </span>
-                    </td>
-
-                    <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal text-right">
-                      {formatCurrency(parseCurrency(emenda.TOTAL))}
-                    </td>
-
-                    <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-sky-800 truncate print:whitespace-normal text-right border-r-0">
-                      {parseCurrency(emenda.PAGO) > 0 ? formatCurrency(parseCurrency(emenda.PAGO)) : '-'}
-                    </td>
-                  </tr>
-                ))}
-                {filteredAndSortedEmendas.length === 0 && (
-                  <tr>
-                    <td colSpan="11" className="px-6 py-10 text-center font-bold text-slate-400 uppercase text-xs">
-                      Nenhuma emenda encontrada.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            <div className="bg-slate-50 px-4 py-2.5 font-bold text-xs text-slate-800 flex justify-between border-t border-slate-800 print:hidden">
-              <span>{filteredAndSortedEmendas.length} de {normalizedEmendas.length} Registros</span>
-              <span className="hidden sm:inline text-slate-500">Clique no título de qualquer coluna para ordenar</span>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 print:grid-cols-2 print:gap-4">
-            {filteredAndSortedEmendas.map((emenda, idx) => (
-              <div
-                key={emenda['NÚMERO DA EMENDA'] || idx}
-                className="border-2 border-slate-800 bg-white shadow-[4px_4px_0_0_#1e293b] print:shadow-none flex flex-col hover:-translate-y-0.5 transition-transform cursor-pointer print:break-inside-avoid print:cursor-auto"
-                onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
-              >
-                <div className="bg-amber-200 border-b-2 border-slate-800 p-3 flex justify-between items-center print:bg-amber-200">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-black text-slate-900 text-base tracking-tight print:text-sm">
-                      #{emenda['NÚMERO DA EMENDA']}
-                    </span>
-                    {emenda['UNIDADE ORÇAMENTÁRIA'] && (
-                      <span className="bg-white border border-slate-800 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-800">
-                        {emenda['UNIDADE ORÇAMENTÁRIA']}
-                      </span>
-                    )}
-                  </div>
-                  <span className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${getSituacaoClasses(emenda.SITUAÇÃO)}`}>
-                    {emenda.SITUAÇÃO || 'Indefinida'}
-                  </span>
-                </div>
-
-                <div className="p-4 flex-1 flex flex-col space-y-2.5 print:p-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center">
-                      <MapPinIcon className="h-4 w-4 mr-1 text-sky-700 print:text-slate-900" />
-                      <p className="text-sky-700 font-bold uppercase text-xs sm:text-sm print:text-slate-900">{emenda['MUNICÍPIO']}</p>
-                    </div>
-                    {emenda.REGIÃO && (
-                      <div className="flex items-center">
-                        <MapIcon className="h-3.5 w-3.5 mr-1 text-slate-600" />
-                        <p className="text-slate-600 font-bold uppercase text-[11px]">{emenda.REGIÃO}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Campo separado de Modalidade */}
-                  <div className="flex items-center justify-between border-t border-b border-slate-200 py-1.5">
-                    <span className="text-[10px] font-bold uppercase text-slate-500">Modalidade:</span>
-                    <span className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${getModalidadeClasses(emenda.MODALIDADE)}`}>
-                      {emenda.MODALIDADE || '-'}
-                    </span>
-                  </div>
-
-                  {/* Campo separado de Razão Social / Entidade */}
-                  {emenda['RAZÃO SOCIAL'] && (
-                    <div className="bg-rose-50/70 border-l-2 border-rose-700 px-2.5 py-1.5">
-                      <p className="text-[10px] font-bold uppercase text-rose-700">Razão Social / Entidade</p>
-                      <p className="text-xs font-bold text-slate-900 break-words">{emenda['RAZÃO SOCIAL']}</p>
-                    </div>
-                  )}
-
-                  {/* Campo separado de Objeto */}
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-0.5">Objeto</p>
-                    <p className="text-xs sm:text-sm font-medium text-slate-800 line-clamp-3 flex-1 print:line-clamp-none print:text-xs">
-                      {emenda.OBJETO}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 border-t-2 border-slate-800 p-3.5 flex justify-between items-end print:p-2">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-slate-500 mb-0.5">Articulador</p>
-                    <p className="text-rose-700 font-bold text-xs sm:text-sm uppercase truncate max-w-[130px] print:text-slate-900">
-                      {emenda.ARTICULADOR || '-'}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold uppercase text-slate-500 mb-0.5">Total</p>
-                    <p className="font-black text-slate-900 text-base sm:text-lg leading-none print:text-sm">
-                      {formatCurrency(parseCurrency(emenda.TOTAL))}
-                    </p>
-                    {parseCurrency(emenda.PAGO) > 0 && (
-                      <p className="text-[11px] font-bold text-sky-800 mt-1">
-                        Pago: {formatCurrency(parseCurrency(emenda.PAGO))}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {filteredAndSortedEmendas.length === 0 && (
-              <div className="col-span-full py-12 text-center font-bold text-slate-500 uppercase border-2 border-slate-400 border-dashed text-xs">
-                Nenhuma emenda encontrada.
-              </div>
-            )}
-          </div>
-        )}
+        {renderEmendasTableOrCards(fichaEmendas, fichaSortConfig, requestFichaSort, fichaViewMode)}
       </div>
     );
   };
@@ -1082,12 +1582,11 @@ export default function App() {
       return map;
     }, [filteredAndSortedEmendas]);
 
-    // Paleta Mondrian: Branco, Amarelo, Azul-Petróleo e Carmesim
     const getMuniColor = (val) => {
       if (!val || val === 0) return '#ffffff';
-      if (val < 300000) return '#fcd34d'; // Amarelo
-      if (val < 800000) return '#0369a1'; // Azul-Petróleo
-      return '#be123c'; // Carmesim
+      if (val < 300000) return '#fcd34d';
+      if (val < 800000) return '#0369a1';
+      return '#be123c';
     };
 
     const renderMap = () => {
@@ -1145,7 +1644,7 @@ export default function App() {
                   setHoveredMuni({ name: feature.properties.name, val, x: e.clientX, y: e.clientY });
                 }}
                 onMouseLeave={() => setHoveredMuni(null)}
-                onClick={() => { if (val > 0) { resetToFrontPage(); setFilterMunicipios([feature.properties.name]); } }}
+                onClick={() => { if (val > 0) openEntityFicha('municipio', feature.properties.name); }}
               />
             );
           })}
@@ -1168,7 +1667,7 @@ export default function App() {
                 {formatCurrency(totalGlobal)}
               </h2>
               <div className="mt-3 pt-2 border-t border-slate-800/40 flex justify-between items-baseline">
-                <span className="text-[11px] font-bold uppercase text-slate-800">Total Pago (SEF/SC):</span>
+                <span className="text-[11px] font-bold uppercase text-slate-800">Total Pago:</span>
                 <span className="text-sm font-black text-sky-900">{formatCurrency(totalPagoGlobal)}</span>
               </div>
             </div>
@@ -1182,7 +1681,7 @@ export default function App() {
                   const maxVal = Math.max(...modalidadeData.map(r => r.valor));
                   const pct = Math.max((d.valor / maxVal) * 100, 5);
                   return (
-                    <div key={d.mod} className="cursor-pointer" onClick={() => handleEntityClick('modalidade', d.mod)}>
+                    <div key={d.mod} className="cursor-pointer" onClick={() => openEntityFicha('modalidade', d.mod)}>
                       <div className="flex justify-between text-xs font-bold uppercase mb-1 text-slate-800 hover:text-rose-700">
                         <span>{d.mod}</span>
                         <span>{formatCurrency(d.valor)}</span>
@@ -1205,7 +1704,7 @@ export default function App() {
                   const maxVal = Math.max(...regiaoData.map(r => r.valor));
                   const pct = Math.max((d.valor / maxVal) * 100, 5);
                   return (
-                    <div key={d.regiao} className="cursor-pointer" onClick={() => handleEntityClick('regiao', d.regiao)}>
+                    <div key={d.regiao} className="cursor-pointer" onClick={() => openEntityFicha('regiao', d.regiao)}>
                       <div className="flex justify-between text-xs font-bold uppercase mb-1 text-slate-800 hover:text-sky-700">
                         <span>{d.regiao}</span>
                         <span>{formatCurrency(d.valor)}</span>
@@ -1228,7 +1727,11 @@ export default function App() {
                   const maxVal = Math.max(...timelineData.map(r => r.valor));
                   const pct = Math.max((d.valor / maxVal) * 100, 5);
                   return (
-                    <div key={d.ano} className="flex-1 flex flex-col items-center group relative h-full justify-end">
+                    <div
+                      key={d.ano}
+                      onClick={() => openEntityFicha('ano', d.ano)}
+                      className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer"
+                    >
                       <div className="opacity-0 group-hover:opacity-100 absolute -top-7 bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 pointer-events-none whitespace-nowrap z-10">
                         {formatCurrency(d.valor)}
                       </div>
@@ -1244,7 +1747,7 @@ export default function App() {
           <div className="lg:col-span-2 bg-white border-2 border-slate-800 shadow-[4px_4px_0_0_#1e293b] print:shadow-none flex flex-col relative overflow-hidden print:break-before-page">
             <div className="bg-sky-700 border-b-2 border-slate-800 p-3.5 flex flex-wrap justify-between items-center gap-2 z-10 print:bg-white print:border-b">
               <p className="text-white font-black uppercase text-xs sm:text-sm tracking-wider flex items-center print:text-slate-900">
-                <MapPinIcon className="h-4 w-4 mr-1.5" /> Mapa de Santa Catarina
+                <MapPinIcon className="h-4 w-4 mr-1.5" /> Mapa de Santa Catarina (Clique em um município para abrir sua Ficha)
               </p>
               <div className="flex space-x-2 text-[10px] font-bold uppercase text-white items-center print:text-slate-900">
                 <span>Legenda:</span>
@@ -1280,7 +1783,7 @@ export default function App() {
     const data = isEditing ? editingEmenda : selectedEmenda;
     const handleInputChange = (field, value) => setEditingEmenda(prev => ({ ...prev, [field]: value }));
 
-    const InfoField = ({ label, field, icon: IconComponent, type = 'text', linkType = null, color = 'blue', isCurrency = false }) => {
+    const InfoField = ({ label, field, icon: IconComponent, type = 'text', entityType = null, color = 'blue', isCurrency = false }) => {
       const rawValue = field === 'MODALIDADE' && !isEditing ? getModalidade(data) : data[field];
       let displayValue = rawValue;
 
@@ -1322,13 +1825,23 @@ export default function App() {
             {IconComponent && <IconComponent className="h-3.5 w-3.5 mr-1 print:hidden" />} {label}
           </label>
           <div className="text-slate-900 font-medium text-sm break-words flex items-center justify-between gap-2">
-            <span>{displayValue || <span className="text-slate-400 italic">N/A</span>}</span>
-            {linkType && rawValue && (
+            {entityType && rawValue ? (
               <button
-                onClick={(e) => { e.stopPropagation(); handleEntityClick(linkType, rawValue); }}
+                onClick={(e) => openEntityFicha(entityType, rawValue, e)}
+                className="font-bold text-left hover:text-rose-700 hover:underline"
+                title={`Abrir Ficha de ${label}: ${rawValue}`}
+              >
+                {displayValue}
+              </button>
+            ) : (
+              <span>{displayValue || <span className="text-slate-400 italic">N/A</span>}</span>
+            )}
+            {entityType && rawValue && (
+              <button
+                onClick={(e) => openEntityFicha(entityType, rawValue, e)}
                 className="text-[10px] bg-amber-200 text-slate-900 border border-slate-800 px-1.5 py-0.5 uppercase font-bold hover:bg-amber-300 print:hidden flex-shrink-0"
               >
-                Filtrar
+                Abrir Ficha
               </button>
             )}
           </div>
@@ -1339,10 +1852,17 @@ export default function App() {
     return (
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 animate-in slide-in-from-right-4 print:w-full print:max-w-none print:m-0 print:p-0">
         <button
-          onClick={() => { setCurrentView('list'); setEditingEmenda(null); }}
+          onClick={() => {
+            if (selectedEntityFicha) {
+              setCurrentView('entity');
+            } else {
+              setCurrentView('list');
+            }
+            setEditingEmenda(null);
+          }}
           className="bg-slate-900 text-white px-4 py-2 font-bold uppercase text-xs border border-slate-800 hover:bg-slate-800 mb-5 flex items-center shadow-[3px_3px_0_0_#1e293b] print:hidden"
         >
-          &larr; Voltar
+          &larr; {selectedEntityFicha ? `Voltar para Ficha de ${selectedEntityFicha.value}` : 'Voltar'}
         </button>
 
         <div className="bg-white border-2 border-slate-800 shadow-[6px_6px_0_0_#1e293b] print:shadow-none print:border-none">
@@ -1390,23 +1910,23 @@ export default function App() {
               <div className="bg-slate-900 text-white font-black uppercase text-xs py-1 px-3 inline-block border border-slate-800 -mt-7 mb-3 print:bg-white print:text-slate-900 print:border-b print:p-0">
                 Identificação
               </div>
-              <InfoField label="Município" field="MUNICÍPIO" icon={MapPinIcon} linkType="municipio" color="blue" />
-              <InfoField label="Região" field="REGIÃO" icon={MapIcon} linkType="regiao" color="black" />
-              <InfoField label="Modalidade" field="MODALIDADE" icon={LayersIcon} linkType="modalidade" color="red" />
-              <InfoField label="Tema" field="TEMA" icon={TagIcon} linkType="tema" color="blue" />
-              <InfoField label="Articulador" field="ARTICULADOR" icon={UserIcon} linkType="articulador" color="red" />
-              <InfoField label="Ano" field="ANO" linkType="ano" color="black" />
+              <InfoField label="Município" field="MUNICÍPIO" icon={MapPinIcon} entityType="municipio" color="blue" />
+              <InfoField label="Região" field="REGIÃO" icon={MapIcon} entityType="regiao" color="black" />
+              <InfoField label="Modalidade" field="MODALIDADE" icon={LayersIcon} entityType="modalidade" color="red" />
+              <InfoField label="Tema" field="TEMA" icon={TagIcon} entityType="tema" color="blue" />
+              <InfoField label="Articulador" field="ARTICULADOR" icon={UserIcon} entityType="articulador" color="red" />
+              <InfoField label="Ano" field="ANO" entityType="ano" color="black" />
             </div>
 
             <div className="space-y-2 bg-slate-50/70 border border-slate-800 p-4 print:border-none print:p-0">
               <div className="bg-sky-700 text-white font-black uppercase text-xs py-1 px-3 inline-block border border-slate-800 -mt-7 mb-3 print:bg-white print:text-slate-900 print:border-b print:p-0">
-                Financeiro / Status SEF-SC
+                Financeiro / Status
               </div>
-              <InfoField label="Situação" field="SITUAÇÃO" linkType="situacao" color="red" />
+              <InfoField label="Situação" field="SITUAÇÃO" entityType="situacao" color="red" />
               <InfoField label="Total Previsto" field="TOTAL" color="blue" isCurrency={true} />
               <InfoField label="Valor Pago" field="PAGO" color="blue" isCurrency={true} />
               <InfoField label="Esfera de Aplicação" field="ESFERA DE APLICAÇÃO" color="black" />
-              <InfoField label="Unidade Orçamentária" field="UNIDADE ORÇAMENTÁRIA" linkType="uo" color="black" />
+              <InfoField label="Unidade Orçamentária" field="UNIDADE ORÇAMENTÁRIA" entityType="uo" color="black" />
             </div>
 
             <div className="col-span-1 md:col-span-2 space-y-2 bg-slate-50/70 border border-slate-800 p-4 mt-2 print:border-none print:p-0">
@@ -1414,8 +1934,8 @@ export default function App() {
                 Entidade / Liderança
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InfoField label="Razão Social (Entidade)" field="RAZÃO SOCIAL" icon={BuildingIcon} linkType="razaoSocial" color="red" />
-                <InfoField label="Liderança" field="LIDERANÇA" icon={UserIcon} color="blue" />
+                <InfoField label="Entidade" field="RAZÃO SOCIAL" icon={BuildingIcon} entityType="entidade" color="red" />
+                <InfoField label="Liderança" field="LIDERANÇA" icon={UserIcon} entityType="lideranca" color="blue" />
                 <InfoField label="Telefone da Liderança" field="TELEFONE DA LIDERANÇA" color="red" />
                 <InfoField label="Email da Liderança" field="EMAIL DA LIDERANÇA" color="black" />
               </div>
@@ -1427,7 +1947,7 @@ export default function App() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <InfoField label="SGPe" field="SGPe" color="black" />
-                <InfoField label="Modalidade" field="MODALIDADE" linkType="modalidade" color="black" />
+                <InfoField label="Modalidade" field="MODALIDADE" entityType="modalidade" color="black" />
                 <InfoField label="Tipo (Impositiva, Bancada, etc.)" field="TIPO (IMPOSITIVA, BANCADA, PARLAMENTARES)" color="black" />
               </div>
               <InfoField label="Entrega Realizada" field="ENTREGA" type="textarea" color="black" />
@@ -1527,6 +2047,7 @@ export default function App() {
       <main>
         {currentView === 'list' && <ListView />}
         {currentView === 'dashboard' && <DashboardView />}
+        {currentView === 'entity' && <EntityProfileView />}
         {(currentView === 'detail' || currentView === 'edit') && <DetailView />}
         {currentView === 'settings' && <SettingsView />}
       </main>
