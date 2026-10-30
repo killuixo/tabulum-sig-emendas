@@ -105,7 +105,6 @@ function getModalidade(emenda) {
   return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
 }
 
-// Função Universal de Ordenação (Alfabética e Numérica Crescente/Decrescente)
 function sortEmendasList(list, sortConfig) {
   if (!sortConfig || !sortConfig.key) return list;
   const sorted = [...list];
@@ -178,7 +177,6 @@ export default function App() {
   const [selectedEmenda, setSelectedEmenda] = useState(null);
   const [editingEmenda, setEditingEmenda] = useState(null);
 
-  // Estado e Histórico de Navegação das Fichas de Cruzamento (Região, Município, Modalidade, Entidade, etc.)
   const [selectedEntityFicha, setSelectedEntityFicha] = useState(null);
   const [entityHistory, setEntityHistory] = useState([]);
 
@@ -196,6 +194,7 @@ export default function App() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -400,7 +399,6 @@ export default function App() {
     });
   };
 
-  // Abre a Ficha de Cruzamento de Dados para qualquer Região, Município, Modalidade, Entidade, Unidade Orçamentária, Situação, Articulador, etc.
   const openEntityFicha = (type, value, e = null) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (!value || String(value).trim() === '' || String(value).trim() === '-') return;
@@ -590,35 +588,35 @@ export default function App() {
 
     let displayText = `${label}: Todos`;
     if (selected.length === 1) displayText = `${label}: ${selected[0]}`;
-    else if (selected.length > 1) displayText = `${label}: ${selected.length} itens`;
+    else if (selected.length > 1) displayText = `${label}: ${selected.length}`;
 
     const visibleOptions = options.filter(opt =>
       String(opt).toLowerCase().includes(optionSearch.toLowerCase())
     );
 
     return (
-      <div className="relative w-full sm:w-auto">
+      <div className="relative w-full">
         <div
           onClick={handleToggleDropdown}
-          className={`px-3 py-2 bg-white border transition-colors font-bold uppercase text-xs cursor-pointer flex justify-between items-center w-full sm:min-w-[150px] sm:max-w-[215px] ${
+          className={`px-2.5 py-1.5 bg-white border transition-colors font-semibold uppercase text-[11px] cursor-pointer flex justify-between items-center w-full ${
             selected.length > 0
-              ? 'border-sky-700 bg-sky-50 text-sky-950 shadow-[2px_2px_0_0_#0369a1]'
-              : 'border-slate-800 text-slate-900 hover:bg-slate-50'
+              ? 'border-sky-700 bg-sky-50 text-sky-950 shadow-[1px_1px_0_0_#0369a1]'
+              : 'border-slate-300 text-slate-700 hover:border-slate-500 hover:bg-slate-50/70'
           }`}
         >
-          <span className="truncate pr-2" title={displayText}>{displayText}</span>
+          <span className="truncate pr-1.5" title={displayText}>{displayText}</span>
           <div className="flex items-center space-x-1 flex-shrink-0">
             {selected.length > 0 && (
               <div onClick={handleClear} className="hover:text-rose-700 bg-white/80 rounded p-0.5" title="Limpar filtro">
-                <XIcon className="w-3 h-3 text-slate-900" />
+                <XIcon className="w-3 h-3 text-slate-800" />
               </div>
             )}
-            <ChevronDownIcon className="w-4 h-4 text-slate-700" />
+            <ChevronDownIcon className="w-3.5 h-3.5 text-slate-500" />
           </div>
         </div>
         {isOpen && (
           <div
-            className="absolute z-30 top-full left-0 right-0 sm:right-auto mt-1 sm:w-64 max-h-64 overflow-y-auto bg-white border-2 border-slate-800 shadow-[4px_4px_0_0_#1e293b] flex flex-col p-2"
+            className="absolute z-40 top-full left-0 mt-1 w-64 max-h-64 overflow-y-auto bg-white border border-slate-700 shadow-[3px_3px_0_0_#1e293b] flex flex-col p-2"
             onClick={(e) => e.stopPropagation()}
           >
             {options.length > 8 && (
@@ -627,18 +625,18 @@ export default function App() {
                 placeholder="Filtrar lista..."
                 value={optionSearch}
                 onChange={(e) => setOptionSearch(e.target.value)}
-                className="mb-2 px-2 py-1 text-xs border border-slate-400 focus:outline-none focus:border-sky-700 text-slate-900"
+                className="mb-2 px-2 py-1 text-xs border border-slate-300 focus:outline-none focus:border-sky-700 text-slate-900"
               />
             )}
             {visibleOptions.map(opt => (
               <label key={opt} className="flex items-center space-x-2 cursor-pointer hover:bg-amber-50 p-1.5 transition-colors">
                 <input
                   type="checkbox"
-                  className="accent-sky-700 w-4 h-4 border border-slate-800 cursor-pointer flex-shrink-0"
+                  className="accent-sky-700 w-3.5 h-3.5 border border-slate-600 cursor-pointer flex-shrink-0"
                   checked={selected.includes(opt)}
                   onChange={(e) => handleToggleOption(e, opt)}
                 />
-                <span className="text-xs font-semibold uppercase truncate flex-1 text-slate-900" title={opt}>{opt}</span>
+                <span className="text-xs font-medium uppercase truncate flex-1 text-slate-800" title={opt}>{opt}</span>
               </label>
             ))}
             {visibleOptions.length === 0 && (
@@ -650,103 +648,122 @@ export default function App() {
     );
   };
 
+  // Barra de Filtros Fixa na Parte Superior (Sticky), Suavizada e Distribuída Uniformemente
   const FilterBar = () => {
-    const hasFilters =
-      searchTerm ||
-      filterArticuladores.length > 0 ||
-      filterMunicipios.length > 0 ||
-      filterRegioes.length > 0 ||
-      filterModalidades.length > 0 ||
-      filterEntidades.length > 0 ||
-      filterTemas.length > 0 ||
-      filterUOs.length > 0 ||
-      filterSituacoes.length > 0 ||
-      filterAnos.length > 0;
+    const activeFilterCount =
+      filterArticuladores.length +
+      filterMunicipios.length +
+      filterRegioes.length +
+      filterModalidades.length +
+      filterEntidades.length +
+      filterTemas.length +
+      filterUOs.length +
+      filterSituacoes.length +
+      filterAnos.length;
+
+    const hasFilters = Boolean(searchTerm) || activeFilterCount > 0;
 
     return (
-      <div className="bg-white p-3.5 sm:p-4 border-2 border-slate-800 mb-4 shadow-[4px_4px_0_0_#1e293b] print:hidden space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <div className="flex-1 relative">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />
-            <input
-              type="text"
-              placeholder="Busca livre (número, objeto, entidade, liderança, SGPe, município...)"
-              className="w-full pl-9 pr-4 py-2 bg-slate-50/60 border border-slate-800 rounded-none focus:outline-none focus:border-sky-700 focus:bg-white font-medium text-xs sm:text-sm text-slate-900 placeholder-slate-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          {hasFilters && (
-            <button
-              onClick={clearAllFilters}
-              className="bg-rose-700 px-3 py-2 text-white border border-slate-800 hover:bg-rose-800 transition-colors flex items-center justify-center text-xs font-bold uppercase shadow-[2px_2px_0_0_#1e293b]"
-              title="Limpar todos os filtros"
-            >
-              <XIcon className="h-4 w-4 mr-1" /> Limpar Filtros
-            </button>
-          )}
-        </div>
+      <div className="sticky top-14 sm:top-16 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-300 shadow-xs mb-5 print:hidden">
+        <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 py-2.5 space-y-2">
+          <div className="flex gap-2 items-center">
+            <div className="flex-1 relative">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Busca livre (número, objeto, entidade, liderança, SGPe, município...)"
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50/70 border border-slate-300 rounded-none focus:outline-none focus:border-sky-700 focus:bg-white font-medium text-xs text-slate-900 placeholder-slate-400 transition-colors"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
 
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-2.5 items-center">
-          <MultiSelect id="mod" label="Modalidade" options={modalidades} selected={filterModalidades} onChange={setFilterModalidades} />
-          <MultiSelect id="ent" label="Entidade" options={entidades} selected={filterEntidades} onChange={setFilterEntidades} />
-          <MultiSelect id="art" label="Articulador" options={articuladores} selected={filterArticuladores} onChange={setFilterArticuladores} />
-          <MultiSelect id="mun" label="Município" options={municipios} selected={filterMunicipios} onChange={setFilterMunicipios} />
-          <MultiSelect id="reg" label="Região" options={regioes} selected={filterRegioes} onChange={setFilterRegioes} />
-          <MultiSelect id="tem" label="Tema" options={temas} selected={filterTemas} onChange={setFilterTemas} />
-          <MultiSelect id="uo" label="Unidade Orçamentária" options={unidadesOrcamentarias} selected={filterUOs} onChange={setFilterUOs} />
-          <MultiSelect id="sit" label="Situação" options={situacoes} selected={filterSituacoes} onChange={setFilterSituacoes} />
-          <MultiSelect id="ano" label="Ano" options={anos} selected={filterAnos} onChange={setFilterAnos} />
+            {/* Botão no celular para recolher/expandir os filtros e não ocupar tela durante a rolagem */}
+            <button
+              onClick={() => setMobileFiltersExpanded(prev => !prev)}
+              className={`sm:hidden px-2.5 py-1.5 border text-[11px] font-bold uppercase flex items-center gap-1 ${
+                activeFilterCount > 0
+                  ? 'border-sky-700 bg-sky-50 text-sky-900'
+                  : 'border-slate-300 bg-white text-slate-700'
+              }`}
+            >
+              <FilterIcon className="w-3.5 h-3.5" />
+              <span>Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+            </button>
+
+            {hasFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="bg-rose-700 px-2.5 py-1.5 text-white border border-rose-800 hover:bg-rose-800 transition-colors flex items-center justify-center text-[11px] font-semibold uppercase whitespace-nowrap"
+                title="Limpar todos os filtros"
+              >
+                <XIcon className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Limpar</span>
+              </button>
+            )}
+          </div>
+
+          {/* Grade com distribuição uniforme: 9 colunas iguais no desktop (1 linha única), 3x3 no tablet e 2 colunas no mobile */}
+          <div className={`${mobileFiltersExpanded ? 'grid' : 'hidden'} sm:grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-1.5 items-center`}>
+            <MultiSelect id="mod" label="Modalidade" options={modalidades} selected={filterModalidades} onChange={setFilterModalidades} />
+            <MultiSelect id="ent" label="Entidade" options={entidades} selected={filterEntidades} onChange={setFilterEntidades} />
+            <MultiSelect id="art" label="Articulador" options={articuladores} selected={filterArticuladores} onChange={setFilterArticuladores} />
+            <MultiSelect id="mun" label="Município" options={municipios} selected={filterMunicipios} onChange={setFilterMunicipios} />
+            <MultiSelect id="reg" label="Região" options={regioes} selected={filterRegioes} onChange={setFilterRegioes} />
+            <MultiSelect id="tem" label="Tema" options={temas} selected={filterTemas} onChange={setFilterTemas} />
+            <MultiSelect id="uo" label="Unid. Orçamentária" options={unidadesOrcamentarias} selected={filterUOs} onChange={setFilterUOs} />
+            <MultiSelect id="sit" label="Situação" options={situacoes} selected={filterSituacoes} onChange={setFilterSituacoes} />
+            <MultiSelect id="ano" label="Ano" options={anos} selected={filterAnos} onChange={setFilterAnos} />
+          </div>
         </div>
       </div>
     );
   };
 
   const Navbar = () => (
-    <nav className="bg-white border-b-2 border-slate-800 sticky top-0 z-20 print:hidden">
-      <div className="h-1.5 w-full flex border-b border-slate-800">
+    <nav className="bg-white border-b border-slate-300 sticky top-0 z-30 print:hidden">
+      <div className="h-1 w-full flex">
         <div className="w-1/3 bg-rose-700"></div>
         <div className="w-1/3 bg-sky-700"></div>
         <div className="w-1/3 bg-amber-300"></div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-14 sm:h-16">
+      <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4">
+        <div className="flex justify-between h-13 sm:h-15">
           <div className="flex items-center cursor-pointer group" onClick={resetToFrontPage} title="Voltar ao Início">
             <img
               src="https://raw.githubusercontent.com/killuixo/tabulum-sig-emendas/refs/heads/main/icon-192.png"
               alt="Ícone TABULUM"
-              className="w-8 h-8 sm:w-9 sm:h-9 mr-2.5 sm:mr-3 object-contain transition-transform group-hover:scale-105"
+              className="w-7 h-7 sm:w-8 sm:h-8 mr-2.5 object-contain transition-transform group-hover:scale-105"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
-            <span className="font-black text-lg sm:text-2xl tracking-tight text-slate-900">TABULUM - Emendas</span>
+            <span className="font-black text-base sm:text-xl tracking-tight text-slate-900">TABULUM - Emendas</span>
           </div>
-          <div className="flex items-center space-x-2.5 sm:space-x-3">
+          <div className="flex items-center space-x-2.5">
             {isAdmin ? (
               <>
-                <div className="hidden md:flex items-center bg-sky-700 border border-slate-800 px-3 py-1 text-xs font-bold text-white shadow-[2px_2px_0_0_#1e293b]">
+                <div className="hidden md:flex items-center bg-sky-700 border border-slate-800 px-2.5 py-1 text-xs font-bold text-white">
                   <UserIcon className="h-3.5 w-3.5 mr-1.5" /> ADMIN
                 </div>
                 <button
                   onClick={() => setCurrentView('settings')}
-                  className="bg-amber-300 border border-slate-800 p-2 hover:bg-amber-400 shadow-[2px_2px_0_0_#1e293b] transition-transform active:translate-y-0.5 active:shadow-none"
+                  className="bg-amber-300 border border-slate-800 p-1.5 hover:bg-amber-400 shadow-[2px_2px_0_0_#1e293b]"
                   title="Ajustes"
                 >
-                  <SettingsIcon className="h-4 w-4 sm:h-5 sm:w-5 text-slate-900" />
+                  <SettingsIcon className="h-4 w-4 text-slate-900" />
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="bg-rose-700 border border-slate-800 p-2 hover:bg-rose-800 shadow-[2px_2px_0_0_#1e293b] transition-transform active:translate-y-0.5 active:shadow-none"
+                  className="bg-rose-700 border border-slate-800 p-1.5 hover:bg-rose-800 shadow-[2px_2px_0_0_#1e293b]"
                   title="Sair"
                 >
-                  <LogOutIcon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  <LogOutIcon className="h-4 w-4 text-white" />
                 </button>
               </>
             ) : (
               <button
                 onClick={() => setShowLoginModal(true)}
-                className="flex items-center bg-amber-300 border border-slate-800 px-3 sm:px-4 py-1.5 sm:py-2 font-bold text-xs sm:text-sm text-slate-900 uppercase shadow-[2px_2px_0_0_#1e293b] hover:bg-amber-400 transition-transform active:translate-y-0.5 active:shadow-none"
+                className="flex items-center bg-amber-300 border border-slate-800 px-3 py-1.5 font-bold text-xs text-slate-900 uppercase shadow-[2px_2px_0_0_#1e293b] hover:bg-amber-400"
               >
-                <LogInIcon className="h-4 w-4 mr-1.5" /> Editar
+                <LogInIcon className="h-3.5 w-3.5 mr-1.5" /> Editar
               </button>
             )}
           </div>
@@ -756,40 +773,39 @@ export default function App() {
   );
 
   const HeaderSwitcher = ({ title }) => (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 space-y-3 md:space-y-0 print:hidden">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 space-y-3 md:space-y-0 print:hidden">
       <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tight">{title}</h1>
-        <div className="flex border border-slate-800 bg-white shadow-[3px_3px_0_0_#1e293b]">
+        <h1 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">{title}</h1>
+        <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
           <button
             onClick={() => setCurrentView('list')}
-            className={`px-3 py-1.5 sm:p-2 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors ${
+            className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors ${
               currentView === 'list' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
             }`}
           >
-            <TableIcon className="h-4 w-4 sm:mr-2" /> <span className="ml-1 sm:ml-0">Quadro</span>
+            <TableIcon className="h-3.5 w-3.5 sm:mr-1.5" /> <span className="ml-1 sm:ml-0">Quadro</span>
           </button>
           <button
             onClick={() => setCurrentView('dashboard')}
-            className={`px-3 py-1.5 sm:p-2 flex items-center font-bold uppercase text-xs transition-colors ${
+            className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors ${
               currentView === 'dashboard' ? 'bg-amber-300 text-slate-900' : 'text-slate-800 hover:bg-slate-100'
             }`}
           >
-            <LayoutDashboardIcon className="h-4 w-4 sm:mr-2" /> <span className="ml-1 sm:ml-0">Dashboard</span>
+            <LayoutDashboardIcon className="h-3.5 w-3.5 sm:mr-1.5" /> <span className="ml-1 sm:ml-0">Dashboard</span>
           </button>
         </div>
       </div>
       {isAdmin && currentView === 'list' && (
         <button
           onClick={() => confirmAction("Sincronizar Planilha", "Deseja sincronizar com o Google Sheets? Isso atualizará seus dados locais com as versões mais recentes do Google.", syncWithGoogleSheet)}
-          className="flex items-center px-3.5 py-2 bg-sky-700 text-white text-xs font-bold uppercase border border-slate-800 shadow-[3px_3px_0_0_#1e293b] hover:bg-sky-800 transition-transform active:translate-y-0.5 active:shadow-none"
+          className="flex items-center px-3.5 py-1.5 bg-sky-700 text-white text-xs font-bold uppercase border border-slate-800 shadow-[2px_2px_0_0_#1e293b] hover:bg-sky-800"
         >
-          <RefreshCwIcon className="h-4 w-4 mr-2" /> <span>Sincronizar</span>
+          <RefreshCwIcon className="h-3.5 w-3.5 mr-1.5" /> <span>Sincronizar</span>
         </button>
       )}
     </div>
   );
 
-  // Renderizador compartilhado de Tabela / Cards de Emendas (usado no Painel Principal e dentro das Fichas de Cruzamento)
   const renderEmendasTableOrCards = (rows, activeSortConfig, onRequestSort, activeViewMode) => {
     const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
       const isActive = activeSortConfig?.key === sortKey;
@@ -813,9 +829,9 @@ export default function App() {
 
     if (activeViewMode === 'table') {
       return (
-        <div className="bg-white border-2 border-slate-800 overflow-x-auto shadow-[4px_4px_0_0_#1e293b] print:shadow-none print:border print:overflow-visible print:w-full">
+        <div className="bg-white border border-slate-800 overflow-x-auto shadow-[3px_3px_0_0_#1e293b] print:shadow-none print:border print:overflow-visible print:w-full">
           <table className="min-w-[1300px] w-full border-collapse table-fixed print:min-w-0 print:w-full">
-            <thead className="bg-amber-200 border-b-2 border-slate-800 print:bg-amber-200">
+            <thead className="bg-amber-200 border-b border-slate-800 print:bg-amber-200">
               <tr>
                 <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="w-[88px] px-2.5 print:w-[7%]" />
                 <SortableHeader label="Região" sortKey="REGIÃO" extraClasses="w-[120px] px-2.5 print:w-[9%]" />
@@ -835,15 +851,15 @@ export default function App() {
                 <tr
                   key={emenda['NÚMERO DA EMENDA'] || idx}
                   onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
-                  className="hover:bg-amber-50/60 cursor-pointer border-b border-slate-300 transition-colors print:break-inside-avoid print:cursor-auto"
+                  className="hover:bg-amber-50/60 cursor-pointer border-b border-slate-200 transition-colors print:break-inside-avoid print:cursor-auto"
                 >
-                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal">
+                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-200 truncate print:whitespace-normal">
                     {emenda['NÚMERO DA EMENDA']}
                   </td>
 
                   <td
                     onClick={(e) => emenda.REGIÃO && openEntityFicha('regiao', emenda.REGIÃO, e)}
-                    className="px-2.5 py-2 text-[11px] print:text-[9px] font-semibold uppercase text-slate-700 hover:text-sky-700 hover:underline border-r border-slate-300 truncate print:whitespace-normal"
+                    className="px-2.5 py-2 text-[11px] print:text-[9px] font-semibold uppercase text-slate-700 hover:text-sky-700 hover:underline border-r border-slate-200 truncate print:whitespace-normal"
                     title={emenda.REGIÃO ? `Abrir Ficha da Região: ${emenda.REGIÃO}` : ''}
                   >
                     {emenda.REGIÃO || '-'}
@@ -851,7 +867,7 @@ export default function App() {
 
                   <td
                     onClick={(e) => emenda['MUNICÍPIO'] && openEntityFicha('municipio', emenda['MUNICÍPIO'], e)}
-                    className="px-2.5 py-2 text-xs print:text-[9px] font-bold uppercase text-sky-700 hover:text-rose-700 hover:underline border-r border-slate-300 truncate print:whitespace-normal"
+                    className="px-2.5 py-2 text-xs print:text-[9px] font-bold uppercase text-sky-700 hover:text-rose-700 hover:underline border-r border-slate-200 truncate print:whitespace-normal"
                     title={emenda['MUNICÍPIO'] ? `Abrir Ficha do Município: ${emenda['MUNICÍPIO']}` : ''}
                   >
                     {emenda['MUNICÍPIO']}
@@ -859,7 +875,7 @@ export default function App() {
 
                   <td
                     onClick={(e) => emenda.MODALIDADE && openEntityFicha('modalidade', emenda.MODALIDADE, e)}
-                    className="px-2.5 py-2 border-r border-slate-300 align-middle"
+                    className="px-2.5 py-2 border-r border-slate-200 align-middle"
                   >
                     <span
                       className={`block w-full text-center border px-1.5 py-0.5 text-[10px] print:text-[8px] font-bold uppercase truncate print:whitespace-normal transition-colors ${getModalidadeClasses(emenda.MODALIDADE)}`}
@@ -871,7 +887,7 @@ export default function App() {
 
                   <td
                     onClick={(e) => emenda['RAZÃO SOCIAL'] && openEntityFicha('entidade', emenda['RAZÃO SOCIAL'], e)}
-                    className={`px-2.5 py-2 text-xs print:text-[9px] font-semibold border-r border-slate-300 truncate print:whitespace-normal ${
+                    className={`px-2.5 py-2 text-xs print:text-[9px] font-semibold border-r border-slate-200 truncate print:whitespace-normal ${
                       emenda['RAZÃO SOCIAL'] ? 'text-slate-900 hover:text-rose-700 hover:underline' : 'text-slate-400'
                     }`}
                     title={emenda['RAZÃO SOCIAL'] ? `Abrir Ficha da Entidade: ${emenda['RAZÃO SOCIAL']}` : ''}
@@ -879,13 +895,13 @@ export default function App() {
                     {emenda['RAZÃO SOCIAL'] || '-'}
                   </td>
 
-                  <td className="px-3 py-2 text-xs print:text-[9px] text-slate-800 font-medium border-r border-slate-300 line-clamp-2 print:line-clamp-none print:whitespace-normal print:break-words" title={emenda.OBJETO}>
+                  <td className="px-3 py-2 text-xs print:text-[9px] text-slate-800 font-medium border-r border-slate-200 line-clamp-2 print:line-clamp-none print:whitespace-normal print:break-words" title={emenda.OBJETO}>
                     {emenda.OBJETO}
                   </td>
 
                   <td
                     onClick={(e) => emenda['UNIDADE ORÇAMENTÁRIA'] && openEntityFicha('uo', emenda['UNIDADE ORÇAMENTÁRIA'], e)}
-                    className="px-2.5 py-2 text-[11px] print:text-[9px] font-bold uppercase text-slate-700 hover:text-sky-700 hover:underline border-r border-slate-300 truncate text-center"
+                    className="px-2.5 py-2 text-[11px] print:text-[9px] font-bold uppercase text-slate-700 hover:text-sky-700 hover:underline border-r border-slate-200 truncate text-center"
                     title={emenda['UNIDADE ORÇAMENTÁRIA'] ? `Abrir Ficha da Unidade Orçamentária: ${emenda['UNIDADE ORÇAMENTÁRIA']}` : ''}
                   >
                     {emenda['UNIDADE ORÇAMENTÁRIA'] || '-'}
@@ -893,7 +909,7 @@ export default function App() {
 
                   <td
                     onClick={(e) => emenda.ARTICULADOR && openEntityFicha('articulador', emenda.ARTICULADOR, e)}
-                    className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-rose-700 hover:text-sky-700 hover:underline border-r border-slate-300 truncate print:whitespace-normal"
+                    className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-rose-700 hover:text-sky-700 hover:underline border-r border-slate-200 truncate print:whitespace-normal"
                     title={emenda.ARTICULADOR ? `Abrir Ficha do Articulador: ${emenda.ARTICULADOR}` : ''}
                   >
                     {emenda.ARTICULADOR || '-'}
@@ -901,7 +917,7 @@ export default function App() {
 
                   <td
                     onClick={(e) => emenda.SITUAÇÃO && openEntityFicha('situacao', emenda.SITUAÇÃO, e)}
-                    className="px-2.5 py-2 border-r border-slate-300 align-middle"
+                    className="px-2.5 py-2 border-r border-slate-200 align-middle"
                   >
                     <span
                       className={`block w-full text-center border px-1 py-0.5 text-[10px] print:text-[8px] font-bold uppercase truncate print:whitespace-normal transition-colors ${getSituacaoClasses(emenda.SITUAÇÃO)}`}
@@ -911,7 +927,7 @@ export default function App() {
                     </span>
                   </td>
 
-                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-300 truncate print:whitespace-normal text-right">
+                  <td className="px-2.5 py-2 text-xs print:text-[9px] font-bold text-slate-900 border-r border-slate-200 truncate print:whitespace-normal text-right">
                     {formatCurrency(parseCurrency(emenda.TOTAL))}
                   </td>
 
@@ -942,10 +958,10 @@ export default function App() {
         {rows.map((emenda, idx) => (
           <div
             key={emenda['NÚMERO DA EMENDA'] || idx}
-            className="border-2 border-slate-800 bg-white shadow-[4px_4px_0_0_#1e293b] print:shadow-none flex flex-col hover:-translate-y-0.5 transition-transform cursor-pointer print:break-inside-avoid print:cursor-auto"
+            className="border border-slate-800 bg-white shadow-[3px_3px_0_0_#1e293b] print:shadow-none flex flex-col hover:-translate-y-0.5 transition-transform cursor-pointer print:break-inside-avoid print:cursor-auto"
             onClick={() => { setSelectedEmenda(emenda); setCurrentView('detail'); }}
           >
-            <div className="bg-amber-200 border-b-2 border-slate-800 p-3 flex justify-between items-center print:bg-amber-200">
+            <div className="bg-amber-200 border-b border-slate-800 p-3 flex justify-between items-center print:bg-amber-200">
               <div className="flex items-center space-x-2">
                 <span className="font-black text-slate-900 text-base tracking-tight print:text-sm">
                   #{emenda['NÚMERO DA EMENDA']}
@@ -1021,7 +1037,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-slate-50 border-t-2 border-slate-800 p-3.5 flex justify-between items-end print:p-2">
+            <div className="bg-slate-50 border-t border-slate-800 p-3.5 flex justify-between items-end print:p-2">
               <div>
                 <p className="text-[10px] font-bold uppercase text-slate-500 mb-0.5">Articulador</p>
                 <button
@@ -1047,7 +1063,7 @@ export default function App() {
           </div>
         ))}
         {rows.length === 0 && (
-          <div className="col-span-full py-12 text-center font-bold text-slate-500 uppercase border-2 border-slate-400 border-dashed text-xs">
+          <div className="col-span-full py-12 text-center font-bold text-slate-500 uppercase border border-slate-400 border-dashed text-xs">
             Nenhuma emenda encontrada.
           </div>
         )}
@@ -1056,86 +1072,85 @@ export default function App() {
   };
 
   const ListView = () => (
-    <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 py-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-      <HeaderSwitcher title="Painel de Emendas" />
+    <>
       <FilterBar />
+      <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 pb-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
+        <HeaderSwitcher title="Painel de Emendas" />
 
-      <div className="flex flex-wrap justify-between gap-3 mb-4 items-center print:hidden">
-        <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
-          <button
-            onClick={() => exportRowsToCSV(filteredAndSortedEmendas, "emendas_filtradas.csv")}
-            className="px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors hover:bg-amber-200 text-slate-900"
-            title="Exportar Filtrados para CSV"
-          >
-            <DownloadIcon className="h-4 w-4" /> <span className="ml-1.5">CSV</span>
-          </button>
-          <button
-            onClick={() => window.print()}
-            className="px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors hover:bg-sky-700 hover:text-white text-slate-900"
-            title="Exportar para PDF / Imprimir"
-          >
-            <PrinterIcon className="h-4 w-4" /> <span className="ml-1.5">PDF</span>
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
-            <select
-              value={sortConfig.key || ''}
-              onChange={(e) => setSortConfig({ key: e.target.value || null, direction: sortConfig.direction })}
-              className="px-2.5 py-1.5 text-xs font-bold uppercase bg-white text-slate-900 focus:outline-none cursor-pointer"
-              title="Escolher campo para ordenar"
-            >
-              <option value="">Ordenar por...</option>
-              {sortableFieldsList.map(f => (
-                <option key={f.key} value={f.key}>{f.label}</option>
-              ))}
-            </select>
-            {sortConfig.key && (
-              <button
-                onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
-                className="px-2.5 py-1.5 border-l border-slate-800 bg-amber-200 hover:bg-amber-300 text-xs font-black uppercase text-slate-900 flex items-center"
-                title={sortConfig.direction === 'asc' ? 'Ordem Crescente (A-Z / 0-9)' : 'Ordem Decrescente (Z-A / 9-0)'}
-              >
-                {sortConfig.direction === 'asc' ? (
-                  <><ChevronUpIcon className="w-3.5 h-3.5 mr-1" /> Cresc.</>
-                ) : (
-                  <><ChevronDownIcon className="w-3.5 h-3.5 mr-1" /> Decresc.</>
-                )}
-              </button>
-            )}
-          </div>
-
+        <div className="flex flex-wrap justify-between gap-3 mb-4 items-center print:hidden">
           <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
             <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors ${
-                viewMode === 'table' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
-              }`}
-              title="Visualização em Lista"
+              onClick={() => exportRowsToCSV(filteredAndSortedEmendas, "emendas_filtradas.csv")}
+              className="px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors hover:bg-amber-200 text-slate-900"
+              title="Exportar Filtrados para CSV"
             >
-              <ListIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Lista</span>
+              <DownloadIcon className="h-4 w-4" /> <span className="ml-1.5">CSV</span>
             </button>
             <button
-              onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors ${
-                viewMode === 'cards' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
-              }`}
-              title="Visualização em Cards"
+              onClick={() => window.print()}
+              className="px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors hover:bg-sky-700 hover:text-white text-slate-900"
+              title="Exportar para PDF / Imprimir"
             >
-              <GridIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Cards</span>
+              <PrinterIcon className="h-4 w-4" /> <span className="ml-1.5">PDF</span>
             </button>
           </div>
-        </div>
-      </div>
 
-      {renderEmendasTableOrCards(filteredAndSortedEmendas, sortConfig, requestSort, viewMode)}
-    </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
+              <select
+                value={sortConfig.key || ''}
+                onChange={(e) => setSortConfig({ key: e.target.value || null, direction: sortConfig.direction })}
+                className="px-2.5 py-1.5 text-xs font-bold uppercase bg-white text-slate-900 focus:outline-none cursor-pointer"
+                title="Escolher campo para ordenar"
+              >
+                <option value="">Ordenar por...</option>
+                {sortableFieldsList.map(f => (
+                  <option key={f.key} value={f.key}>{f.label}</option>
+                ))}
+              </select>
+              {sortConfig.key && (
+                <button
+                  onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                  className="px-2.5 py-1.5 border-l border-slate-800 bg-amber-200 hover:bg-amber-300 text-xs font-black uppercase text-slate-900 flex items-center"
+                  title={sortConfig.direction === 'asc' ? 'Ordem Crescente (A-Z / 0-9)' : 'Ordem Decrescente (Z-A / 9-0)'}
+                >
+                  {sortConfig.direction === 'asc' ? (
+                    <><ChevronUpIcon className="w-3.5 h-3.5 mr-1" /> Cresc.</>
+                  ) : (
+                    <><ChevronDownIcon className="w-3.5 h-3.5 mr-1" /> Decresc.</>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <div className="flex border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs border-r border-slate-800 transition-colors ${
+                  viewMode === 'table' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
+                }`}
+                title="Visualização em Lista"
+              >
+                <ListIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Lista</span>
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`px-3 py-1.5 flex items-center font-bold uppercase text-xs transition-colors ${
+                  viewMode === 'cards' ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-100'
+                }`}
+                title="Visualização em Cards"
+              >
+                <GridIcon className="h-4 w-4" /> <span className="ml-1.5 hidden sm:inline">Cards</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {renderEmendasTableOrCards(filteredAndSortedEmendas, sortConfig, requestSort, viewMode)}
+      </div>
+    </>
   );
 
-  // ============================================================================
-  // FICHA INTERATIVA DE CRUZAMENTO DE DADOS (Região, Município, Modalidade, Entidade, Unidade Orçamentária, Situação, Articulador, etc.)
-  // ============================================================================
   const EntityProfileView = () => {
     const [fichaSearch, setFichaSearch] = useState('');
     const [fichaSortConfig, setFichaSortConfig] = useState({ key: 'NÚMERO DA EMENDA', direction: 'desc' });
@@ -1146,7 +1161,6 @@ export default function App() {
     const { type, value } = selectedEntityFicha;
     const meta = ENTITY_TYPE_META[type] || { label: 'Categoria', plural: 'Categorias', field: type };
 
-    // Todas as emendas pertencentes a esta Ficha
     const baseEntityEmendas = useMemo(() => {
       return normalizedEmendas.filter(e => {
         const cellVal = String(e[meta.field] || '').trim();
@@ -1154,7 +1168,6 @@ export default function App() {
       });
     }, [normalizedEmendas, meta.field, value]);
 
-    // Emendas filtradas pela busca interna da Ficha e ordenadas pelo usuário
     const fichaEmendas = useMemo(() => {
       const filtered = baseEntityEmendas.filter(e =>
         fichaSearch === '' || JSON.stringify(e).toLowerCase().includes(fichaSearch.toLowerCase())
@@ -1170,13 +1183,11 @@ export default function App() {
       setFichaSortConfig({ key, direction });
     };
 
-    // Indicadores Globais da Ficha
     const totalPrevisto = baseEntityEmendas.reduce((acc, e) => acc + parseCurrency(e.TOTAL), 0);
     const totalPago = baseEntityEmendas.reduce((acc, e) => acc + parseCurrency(e.PAGO), 0);
     const saldoPagar = Math.max(totalPrevisto - totalPago, 0);
     const pctExecutado = totalPrevisto > 0 ? (totalPago / totalPrevisto) * 100 : 0;
 
-    // Constrói os cruzamentos de dados para todas as outras dimensões
     const buildBreakdown = (dimType) => {
       const dimMeta = ENTITY_TYPE_META[dimType];
       const map = {};
@@ -1214,7 +1225,6 @@ export default function App() {
       });
     };
 
-    // Quais dimensões exibir no cruzamento (todas exceto a própria dimensão da ficha)
     const crossDimensions = [
       'municipio',
       'regiao',
@@ -1228,7 +1238,6 @@ export default function App() {
       'lideranca'
     ].filter(d => d !== type);
 
-    // Lista detalhada de lideranças com contatos vinculados a esta Ficha
     const liderancasDetalhadas = useMemo(() => {
       const map = {};
       baseEntityEmendas.forEach(e => {
@@ -1265,7 +1274,6 @@ export default function App() {
 
     return (
       <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 py-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        {/* Barra Superior de Navegação da Ficha */}
         <div className="flex flex-wrap justify-between items-center gap-3 mb-5 print:hidden">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1307,9 +1315,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* Cabeçalho Mondrian da Ficha Analítica */}
-        <div className="bg-white border-2 border-slate-800 shadow-[5px_5px_0_0_#1e293b] mb-6 print:shadow-none">
-          <div className="bg-sky-700 border-b-2 border-slate-800 p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:bg-white">
+        <div className="bg-white border border-slate-800 shadow-[4px_4px_0_0_#1e293b] mb-6 print:shadow-none">
+          <div className="bg-sky-700 border-b border-slate-800 p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:bg-white">
             <div>
               <span className="inline-block bg-amber-300 text-slate-900 border border-slate-900 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider mb-2">
                 Ficha de {meta.label} — Cruzamento de Dados
@@ -1318,14 +1325,13 @@ export default function App() {
                 {value}
               </h1>
             </div>
-            <div className="bg-white border-2 border-slate-900 px-4 py-2.5 text-right shadow-[3px_3px_0_0_#1e293b]">
+            <div className="bg-white border border-slate-900 px-4 py-2.5 text-right shadow-[2px_2px_0_0_#1e293b]">
               <span className="text-[10px] font-black uppercase text-slate-500 block">Total de Emendas</span>
               <span className="text-2xl font-black text-rose-700">{baseEntityEmendas.length}</span>
             </div>
           </div>
 
-          {/* Faixa de Indicadores Financeiros e Multidimensionais da Ficha */}
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-b-2 border-slate-800 bg-slate-50/60">
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-b border-slate-800 bg-slate-50/60">
             <div className="bg-white border border-slate-800 p-4 shadow-[2px_2px_0_0_#1e293b]">
               <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Valor Total Previsto</p>
               <p className="text-xl sm:text-2xl font-black text-slate-900">{formatCurrency(totalPrevisto)}</p>
@@ -1352,7 +1358,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Grade de Cruzamento de Dados Interativa (Ordenável Alfabética e Numericamente em cada dimensão) */}
           <div className="p-5">
             <h2 className="text-sm sm:text-base font-black uppercase text-slate-900 tracking-wider mb-4 flex items-center">
               <span className="w-2.5 h-5 bg-rose-700 border border-slate-900 mr-2"></span>
@@ -1384,7 +1389,7 @@ export default function App() {
                 };
 
                 return (
-                  <div key={dimKey} className="border border-slate-800 bg-white shadow-[3px_3px_0_0_#1e293b] flex flex-col">
+                  <div key={dimKey} className="border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b] flex flex-col">
                     <div className="bg-amber-200 border-b border-slate-800 px-3 py-2 flex justify-between items-center">
                       <span className="font-black text-xs uppercase text-slate-900">{dimMeta.plural}</span>
                       <span className="bg-white border border-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-slate-800">
@@ -1431,9 +1436,8 @@ export default function App() {
               })}
             </div>
 
-            {/* Se houver Lideranças cadastradas com contato, mostra quadro rápido de Lideranças da Ficha */}
             {liderancasDetalhadas.length > 0 && (
-              <div className="mt-6 border border-slate-800 bg-white shadow-[3px_3px_0_0_#1e293b]">
+              <div className="mt-6 border border-slate-800 bg-white shadow-[2px_2px_0_0_#1e293b]">
                 <div className="bg-rose-700 text-white border-b border-slate-800 px-3.5 py-2 flex justify-between items-center">
                   <span className="font-black text-xs uppercase tracking-wider">
                     Lideranças e Contatos Vinculados ({liderancasDetalhadas.length})
@@ -1474,7 +1478,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Lista Interativa de Emendas desta Ficha */}
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4 print:hidden">
           <div className="flex items-center space-x-2 flex-1 min-w-[220px]">
             <div className="relative flex-1 max-w-md">
@@ -1541,48 +1544,83 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // DASHBOARD ESTATÍSTICO ADAPTADO (Todas as Regiões + Valores e Quantidades + Mapa por Valor ou Quantidade + Suporte Touch/Mouse)
+  // ============================================================================
   const DashboardView = () => {
     const [hoveredMuni, setHoveredMuni] = useState(null);
+    const [mapMetric, setMapMetric] = useState('valor'); // 'valor' | 'quantidade'
 
     const totalGlobal = filteredAndSortedEmendas.reduce((acc, em) => acc + parseCurrency(em.TOTAL), 0);
     const totalPagoGlobal = filteredAndSortedEmendas.reduce((acc, em) => acc + parseCurrency(em.PAGO), 0);
+    const totalCountGlobal = filteredAndSortedEmendas.length;
 
     const emendasPorModalidade = filteredAndSortedEmendas.reduce((acc, em) => {
       const mod = em.MODALIDADE || 'N/A';
-      acc[mod] = (acc[mod] || 0) + parseCurrency(em.TOTAL);
+      if (!acc[mod]) acc[mod] = { valor: 0, count: 0 };
+      acc[mod].valor += parseCurrency(em.TOTAL);
+      acc[mod].count += 1;
       return acc;
     }, {});
     const modalidadeData = Object.keys(emendasPorModalidade)
-      .map(mod => ({ mod, valor: emendasPorModalidade[mod] }))
+      .map(mod => ({ mod, valor: emendasPorModalidade[mod].valor, count: emendasPorModalidade[mod].count }))
       .sort((a, b) => b.valor - a.valor);
 
     const emendasPorAno = filteredAndSortedEmendas.reduce((acc, em) => {
       const ano = em.ANO || 'N/A';
-      acc[ano] = (acc[ano] || 0) + parseCurrency(em.TOTAL);
+      if (!acc[ano]) acc[ano] = { valor: 0, count: 0 };
+      acc[ano].valor += parseCurrency(em.TOTAL);
+      acc[ano].count += 1;
       return acc;
     }, {});
-    const timelineData = Object.keys(emendasPorAno).sort().map(ano => ({ ano, valor: emendasPorAno[ano] }));
+    const timelineData = Object.keys(emendasPorAno).sort().map(ano => ({
+      ano,
+      valor: emendasPorAno[ano].valor,
+      count: emendasPorAno[ano].count
+    }));
 
+    // TODAS AS REGIÕES (sem .slice) com Valor Total e Quantidade de Emendas
     const emendasPorRegiao = filteredAndSortedEmendas.reduce((acc, em) => {
       const regiao = em.REGIÃO || 'N/A';
-      acc[regiao] = (acc[regiao] || 0) + parseCurrency(em.TOTAL);
+      if (!acc[regiao]) acc[regiao] = { valor: 0, count: 0 };
+      acc[regiao].valor += parseCurrency(em.TOTAL);
+      acc[regiao].count += 1;
       return acc;
     }, {});
     const regiaoData = Object.keys(emendasPorRegiao)
-      .map(regiao => ({ regiao, valor: emendasPorRegiao[regiao] }))
-      .sort((a, b) => b.valor - a.valor)
-      .slice(0, 5);
+      .map(regiao => ({
+        regiao,
+        valor: emendasPorRegiao[regiao].valor,
+        count: emendasPorRegiao[regiao].count
+      }))
+      .sort((a, b) => b.valor - a.valor);
 
+    // Agrupamento por Município com Valor Total E Quantidade de Emendas
     const emendasPorMuni = useMemo(() => {
       const map = {};
       filteredAndSortedEmendas.forEach(em => {
         const mName = normalizeStr(em['MUNICÍPIO']);
-        if (mName) map[mName] = (map[mName] || 0) + parseCurrency(em.TOTAL);
+        if (mName) {
+          if (!map[mName]) map[mName] = { valor: 0, count: 0 };
+          map[mName].valor += parseCurrency(em.TOTAL);
+          map[mName].count += 1;
+        }
       });
       return map;
     }, [filteredAndSortedEmendas]);
 
-    const getMuniColor = (val) => {
+    // Coloração do Mapa: Por Valor Total (padrão) ou Por Quantidade de Emendas
+    const getMuniColor = (muniStats) => {
+      if (!muniStats || muniStats.count === 0) return '#ffffff';
+
+      if (mapMetric === 'quantidade') {
+        const qtd = muniStats.count;
+        if (qtd <= 2) return '#fcd34d'; // Amarelo (1 a 2 emendas)
+        if (qtd <= 5) return '#0369a1'; // Azul-Petróleo (3 a 5 emendas)
+        return '#be123c'; // Carmesim (6+ emendas)
+      }
+
+      const val = muniStats.valor;
       if (!val || val === 0) return '#ffffff';
       if (val < 300000) return '#fcd34d';
       if (val < 800000) return '#0369a1';
@@ -1628,23 +1666,58 @@ export default function App() {
       };
 
       return (
-        <svg viewBox={`0 0 ${mapWidth} ${mapHeight}`} className="w-full h-auto">
+        <svg
+          viewBox={`0 0 ${mapWidth} ${mapHeight}`}
+          className="w-full h-auto select-none"
+          onClick={() => setHoveredMuni(null)}
+        >
           {mapGeoJson.features.map((feature, i) => {
             const mName = normalizeStr(feature.properties.name);
-            const val = emendasPorMuni[mName] || 0;
+            const stats = emendasPorMuni[mName] || { valor: 0, count: 0 };
             return (
               <path
                 key={i}
                 d={generatePath(feature.geometry)}
-                fill={getMuniColor(val)}
+                fill={getMuniColor(stats)}
                 stroke="#1e293b"
                 strokeWidth="0.8"
-                className="hover:stroke-[2.5px] transition-all cursor-crosshair relative"
+                className="hover:stroke-[2.5px] transition-all cursor-pointer relative"
                 onMouseEnter={(e) => {
-                  setHoveredMuni({ name: feature.properties.name, val, x: e.clientX, y: e.clientY });
+                  setHoveredMuni({
+                    name: feature.properties.name,
+                    val: stats.valor,
+                    count: stats.count,
+                    x: e.clientX,
+                    y: e.clientY,
+                    isTouch: false
+                  });
                 }}
-                onMouseLeave={() => setHoveredMuni(null)}
-                onClick={() => { if (val > 0) openEntityFicha('municipio', feature.properties.name); }}
+                onMouseMove={(e) => {
+                  setHoveredMuni(prev => prev && !prev.isTouch ? {
+                    ...prev,
+                    x: e.clientX,
+                    y: e.clientY
+                  } : prev);
+                }}
+                onMouseLeave={() => {
+                  setHoveredMuni(prev => (prev && !prev.isTouch ? null : prev));
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches && e.touches[0];
+                  setHoveredMuni({
+                    name: feature.properties.name,
+                    val: stats.valor,
+                    count: stats.count,
+                    x: touch ? touch.clientX : 180,
+                    y: touch ? touch.clientY : 240,
+                    isTouch: true
+                  });
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (stats.count > 0) openEntityFicha('municipio', feature.properties.name);
+                }}
               />
             );
           })}
@@ -1653,128 +1726,211 @@ export default function App() {
     };
 
     return (
-      <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 py-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        <HeaderSwitcher title="Dashboard Estatístico" />
+      <>
         <FilterBar />
+        <div className="max-w-[96%] xl:max-w-[1440px] mx-auto px-3 sm:px-4 pb-6 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
+          <HeaderSwitcher title="Dashboard Estatístico" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:grid-cols-1 print:gap-4">
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-amber-200 border-2 border-slate-800 p-5 shadow-[4px_4px_0_0_#1e293b] print:shadow-none flex flex-col justify-center">
-              <p className="text-slate-900 font-black uppercase text-xs tracking-widest border-b-2 border-slate-800 pb-2 mb-3">
-                Valor Total no Filtro
-              </p>
-              <h2 className="text-3xl xl:text-4xl font-black text-slate-900 break-words leading-none">
-                {formatCurrency(totalGlobal)}
-              </h2>
-              <div className="mt-3 pt-2 border-t border-slate-800/40 flex justify-between items-baseline">
-                <span className="text-[11px] font-bold uppercase text-slate-800">Total Pago:</span>
-                <span className="text-sm font-black text-sky-900">{formatCurrency(totalPagoGlobal)}</span>
-              </div>
-            </div>
-
-            <div className="bg-white border-2 border-slate-800 p-5 shadow-[4px_4px_0_0_#1e293b] print:shadow-none">
-              <p className="text-slate-900 font-black uppercase text-xs tracking-widest border-b-2 border-slate-800 pb-2 mb-4">
-                Por Modalidade
-              </p>
-              <div className="space-y-3.5">
-                {modalidadeData.length > 0 ? modalidadeData.map((d) => {
-                  const maxVal = Math.max(...modalidadeData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div key={d.mod} className="cursor-pointer" onClick={() => openEntityFicha('modalidade', d.mod)}>
-                      <div className="flex justify-between text-xs font-bold uppercase mb-1 text-slate-800 hover:text-rose-700">
-                        <span>{d.mod}</span>
-                        <span>{formatCurrency(d.valor)}</span>
-                      </div>
-                      <div className="h-5 w-full bg-slate-50 border border-slate-800">
-                        <div className="h-full bg-rose-700 border-r border-slate-800" style={{ width: `${pct}%` }}></div>
-                      </div>
-                    </div>
-                  );
-                }) : <p className="text-xs font-bold text-slate-400 uppercase">Sem dados.</p>}
-              </div>
-            </div>
-
-            <div className="bg-white border-2 border-slate-800 p-5 shadow-[4px_4px_0_0_#1e293b] print:shadow-none">
-              <p className="text-slate-900 font-black uppercase text-xs tracking-widest border-b-2 border-slate-800 pb-2 mb-4">
-                Top Regiões
-              </p>
-              <div className="space-y-3.5">
-                {regiaoData.length > 0 ? regiaoData.map((d) => {
-                  const maxVal = Math.max(...regiaoData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div key={d.regiao} className="cursor-pointer" onClick={() => openEntityFicha('regiao', d.regiao)}>
-                      <div className="flex justify-between text-xs font-bold uppercase mb-1 text-slate-800 hover:text-sky-700">
-                        <span>{d.regiao}</span>
-                        <span>{formatCurrency(d.valor)}</span>
-                      </div>
-                      <div className="h-5 w-full bg-slate-50 border border-slate-800">
-                        <div className="h-full bg-sky-700 border-r border-slate-800" style={{ width: `${pct}%` }}></div>
-                      </div>
-                    </div>
-                  );
-                }) : <p className="text-xs font-bold text-slate-400 uppercase">Sem dados.</p>}
-              </div>
-            </div>
-
-            <div className="bg-white border-2 border-slate-800 p-5 shadow-[4px_4px_0_0_#1e293b] print:shadow-none">
-              <p className="text-slate-900 font-black uppercase text-xs tracking-widest border-b-2 border-slate-800 pb-2 mb-4">
-                Evolução Anual
-              </p>
-              <div className="flex items-end h-36 space-x-2 border-b border-l border-slate-800 p-2">
-                {timelineData.length > 0 ? timelineData.map((d) => {
-                  const maxVal = Math.max(...timelineData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div
-                      key={d.ano}
-                      onClick={() => openEntityFicha('ano', d.ano)}
-                      className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer"
-                    >
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-7 bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 pointer-events-none whitespace-nowrap z-10">
-                        {formatCurrency(d.valor)}
-                      </div>
-                      <div className="w-full bg-rose-700 border border-slate-800 transition-all group-hover:bg-amber-300" style={{ height: `${pct}%` }}></div>
-                      <span className="text-[10px] font-black mt-1.5 text-slate-800">{d.ano}</span>
-                    </div>
-                  );
-                }) : <p className="text-xs font-bold text-slate-400 uppercase self-center w-full text-center">Sem dados.</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 bg-white border-2 border-slate-800 shadow-[4px_4px_0_0_#1e293b] print:shadow-none flex flex-col relative overflow-hidden print:break-before-page">
-            <div className="bg-sky-700 border-b-2 border-slate-800 p-3.5 flex flex-wrap justify-between items-center gap-2 z-10 print:bg-white print:border-b">
-              <p className="text-white font-black uppercase text-xs sm:text-sm tracking-wider flex items-center print:text-slate-900">
-                <MapPinIcon className="h-4 w-4 mr-1.5" /> Mapa de Santa Catarina (Clique em um município para abrir sua Ficha)
-              </p>
-              <div className="flex space-x-2 text-[10px] font-bold uppercase text-white items-center print:text-slate-900">
-                <span>Legenda:</span>
-                <div className="w-3 h-3 bg-amber-300 border border-slate-900"></div> <span>Baixo</span>
-                <div className="w-3 h-3 bg-sky-700 border border-slate-900 ml-1.5"></div> <span>Médio</span>
-                <div className="w-3 h-3 bg-rose-700 border border-slate-900 ml-1.5"></div> <span>Alto</span>
-              </div>
-            </div>
-
-            <div className="flex-1 p-2 bg-white relative flex items-center justify-center">
-              {renderMap()}
-
-              {hoveredMuni && (
-                <div
-                  className="fixed bg-white border-2 border-slate-800 p-2.5 shadow-[3px_3px_0_0_#1e293b] z-50 pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-10px] print:hidden"
-                  style={{ left: hoveredMuni.x, top: hoveredMuni.y }}
-                >
-                  <p className="font-black text-rose-700 text-xs uppercase">{hoveredMuni.name}</p>
-                  <p className="font-bold text-xs text-slate-900">
-                    {hoveredMuni.val > 0 ? formatCurrency(hoveredMuni.val) : 'Nenhuma emenda'}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:grid-cols-1 print:gap-4">
+            <div className="lg:col-span-1 space-y-6">
+              {/* Resumo Geral no Filtro (Valor Total + Quantidade de Emendas + Total Pago) */}
+              <div className="bg-amber-200 border border-slate-800 p-5 shadow-[3px_3px_0_0_#1e293b] print:shadow-none flex flex-col justify-center">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-3">
+                  <p className="text-slate-900 font-black uppercase text-xs tracking-widest">
+                    Total no Filtro
                   </p>
+                  <span className="bg-white border border-slate-900 px-2 py-0.5 text-[11px] font-black text-rose-700 uppercase">
+                    {totalCountGlobal} {totalCountGlobal === 1 ? 'emenda' : 'emendas'}
+                  </span>
                 </div>
-              )}
+                <h2 className="text-3xl xl:text-4xl font-black text-slate-900 break-words leading-none">
+                  {formatCurrency(totalGlobal)}
+                </h2>
+                <div className="mt-3 pt-2 border-t border-slate-800/40 flex justify-between items-baseline">
+                  <span className="text-[11px] font-bold uppercase text-slate-800">Total Pago:</span>
+                  <span className="text-sm font-black text-sky-900">{formatCurrency(totalPagoGlobal)}</span>
+                </div>
+              </div>
+
+              {/* Por Modalidade (Valor Total + Quantidade) */}
+              <div className="bg-white border border-slate-800 p-5 shadow-[3px_3px_0_0_#1e293b] print:shadow-none">
+                <p className="text-slate-900 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-2 mb-4">
+                  Por Modalidade
+                </p>
+                <div className="space-y-3.5">
+                  {modalidadeData.length > 0 ? modalidadeData.map((d) => {
+                    const maxVal = Math.max(...modalidadeData.map(r => r.valor));
+                    const pct = Math.max((d.valor / maxVal) * 100, 5);
+                    return (
+                      <div key={d.mod} className="cursor-pointer group" onClick={() => openEntityFicha('modalidade', d.mod)}>
+                        <div className="flex justify-between items-baseline text-xs font-bold uppercase mb-1 text-slate-800 group-hover:text-rose-700">
+                          <span className="truncate pr-2">{d.mod}</span>
+                          <span className="whitespace-nowrap text-[11px]">
+                            <strong className="text-rose-700">{d.count} {d.count === 1 ? 'emenda' : 'emendas'}</strong> • {formatCurrency(d.valor)}
+                          </span>
+                        </div>
+                        <div className="h-4 w-full bg-slate-50 border border-slate-800">
+                          <div className="h-full bg-rose-700 border-r border-slate-800" style={{ width: `${pct}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  }) : <p className="text-xs font-bold text-slate-400 uppercase">Sem dados.</p>}
+                </div>
+              </div>
+
+              {/* Todas as Regiões (Valor Total + Quantidade de Emendas) */}
+              <div className="bg-white border border-slate-800 p-5 shadow-[3px_3px_0_0_#1e293b] print:shadow-none">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-4">
+                  <p className="text-slate-900 font-black uppercase text-xs tracking-widest">
+                    Todas as Regiões ({regiaoData.length})
+                  </p>
+                  <span className="text-[10px] font-bold uppercase text-slate-500">Qtd • Valor</span>
+                </div>
+                <div className="space-y-3">
+                  {regiaoData.length > 0 ? regiaoData.map((d) => {
+                    const maxVal = Math.max(...regiaoData.map(r => r.valor));
+                    const pct = Math.max((d.valor / maxVal) * 100, 4);
+                    return (
+                      <div key={d.regiao} className="cursor-pointer group" onClick={() => openEntityFicha('regiao', d.regiao)}>
+                        <div className="flex justify-between items-baseline text-[11px] font-bold uppercase mb-1 text-slate-800 group-hover:text-sky-700">
+                          <span className="truncate pr-2" title={d.regiao}>{d.regiao}</span>
+                          <span className="whitespace-nowrap">
+                            <strong className="text-sky-700">{d.count} {d.count === 1 ? 'emenda' : 'emendas'}</strong> • {formatCurrency(d.valor)}
+                          </span>
+                        </div>
+                        <div className="h-3.5 w-full bg-slate-50 border border-slate-800">
+                          <div className="h-full bg-sky-700 border-r border-slate-800" style={{ width: `${pct}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  }) : <p className="text-xs font-bold text-slate-400 uppercase">Sem dados.</p>}
+                </div>
+              </div>
+
+              {/* Evolução Anual (Valor Total + Quantidade) */}
+              <div className="bg-white border border-slate-800 p-5 shadow-[3px_3px_0_0_#1e293b] print:shadow-none">
+                <p className="text-slate-900 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-2 mb-4">
+                  Evolução Anual
+                </p>
+                <div className="flex items-end h-36 space-x-2 border-b border-l border-slate-800 p-2">
+                  {timelineData.length > 0 ? timelineData.map((d) => {
+                    const maxVal = Math.max(...timelineData.map(r => r.valor));
+                    const pct = Math.max((d.valor / maxVal) * 100, 5);
+                    return (
+                      <div
+                        key={d.ano}
+                        onClick={() => openEntityFicha('ano', d.ano)}
+                        className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer"
+                      >
+                        <div className="opacity-0 group-hover:opacity-100 absolute -top-9 bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 pointer-events-none whitespace-nowrap z-10 text-center">
+                          {d.count} {d.count === 1 ? 'emenda' : 'emendas'} • {formatCurrency(d.valor)}
+                        </div>
+                        <div className="w-full bg-rose-700 border border-slate-800 transition-all group-hover:bg-amber-300" style={{ height: `${pct}%` }}></div>
+                        <span className="text-[10px] font-black mt-1.5 text-slate-800">{d.ano}</span>
+                        <span className="text-[9px] font-bold text-slate-500">{d.count} em.</span>
+                      </div>
+                    );
+                  }) : <p className="text-xs font-bold text-slate-400 uppercase self-center w-full text-center">Sem dados.</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* Coluna do Mapa de Santa Catarina */}
+            <div className="lg:col-span-2 bg-white border border-slate-800 shadow-[3px_3px_0_0_#1e293b] print:shadow-none flex flex-col relative overflow-hidden print:break-before-page self-start">
+              <div className="bg-sky-700 border-b border-slate-800 p-3.5 flex flex-wrap justify-between items-center gap-3 z-10 print:bg-white print:border-b">
+                <p className="text-white font-black uppercase text-xs sm:text-sm tracking-wider flex items-center print:text-slate-900">
+                  <MapPinIcon className="h-4 w-4 mr-1.5" /> Mapa de Santa Catarina
+                </p>
+
+                {/* Alternador de Visualização do Mapa: Por Valor Total vs. Por Quantidade de Emendas */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex border border-slate-900 bg-white print:hidden">
+                    <button
+                      onClick={() => setMapMetric('valor')}
+                      className={`px-2.5 py-1 text-[10px] font-black uppercase transition-colors border-r border-slate-900 ${
+                        mapMetric === 'valor' ? 'bg-amber-300 text-slate-900' : 'bg-white text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      Por Valor (R$)
+                    </button>
+                    <button
+                      onClick={() => setMapMetric('quantidade')}
+                      className={`px-2.5 py-1 text-[10px] font-black uppercase transition-colors ${
+                        mapMetric === 'quantidade' ? 'bg-amber-300 text-slate-900' : 'bg-white text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      Por Quantidade (Nº)
+                    </button>
+                  </div>
+
+                  {/* Legenda Dinâmica conforme a Métrica Selecionada */}
+                  {mapMetric === 'valor' ? (
+                    <div className="flex space-x-2 text-[10px] font-bold uppercase text-white items-center print:text-slate-900">
+                      <div className="w-3 h-3 bg-amber-300 border border-slate-900"></div> <span>Até 300k</span>
+                      <div className="w-3 h-3 bg-sky-700 border border-white ml-1.5"></div> <span>300k–800k</span>
+                      <div className="w-3 h-3 bg-rose-700 border border-white ml-1.5"></div> <span>+800k</span>
+                    </div>
+                  ) : (
+                    <div className="flex space-x-2 text-[10px] font-bold uppercase text-white items-center print:text-slate-900">
+                      <div className="w-3 h-3 bg-amber-300 border border-slate-900"></div> <span>1–2 em.</span>
+                      <div className="w-3 h-3 bg-sky-700 border border-white ml-1.5"></div> <span>3–5 em.</span>
+                      <div className="w-3 h-3 bg-rose-700 border border-white ml-1.5"></div> <span>6+ em.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-2 sm:p-4 bg-white relative flex flex-col items-center justify-center">
+                {renderMap()}
+
+                {/* Balão Informativo no Mouse (PC) ou Toque/Segurar (Celular) mostrando Quantidade + Valor Total */}
+                {hoveredMuni && (
+                  <div
+                    className={`${
+                      hoveredMuni.isTouch
+                        ? 'sticky bottom-2 left-2 right-2 w-full max-w-sm mx-auto mt-2'
+                        : 'fixed pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-12px]'
+                    } bg-white border-2 border-slate-900 p-3 shadow-[4px_4px_0_0_#1e293b] z-50 print:hidden`}
+                    style={!hoveredMuni.isTouch ? { left: hoveredMuni.x, top: hoveredMuni.y } : {}}
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <p className="font-black text-rose-700 text-xs sm:text-sm uppercase">{hoveredMuni.name}</p>
+                      {hoveredMuni.isTouch && (
+                        <button
+                          onClick={() => setHoveredMuni(null)}
+                          className="text-slate-500 hover:text-slate-900 p-0.5"
+                        >
+                          <XIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {hoveredMuni.count > 0 ? (
+                      <div className="mt-1 space-y-0.5">
+                        <p className="font-bold text-xs text-sky-800">
+                          Quantidade: {hoveredMuni.count} {hoveredMuni.count === 1 ? 'emenda' : 'emendas'}
+                        </p>
+                        <p className="font-black text-xs sm:text-sm text-slate-900">
+                          Valor Total: {formatCurrency(hoveredMuni.val)}
+                        </p>
+                        {hoveredMuni.isTouch && (
+                          <button
+                            onClick={() => openEntityFicha('municipio', hoveredMuni.name)}
+                            className="mt-2 w-full bg-amber-300 text-slate-900 border border-slate-900 py-1 px-2 text-[10px] font-black uppercase text-center"
+                          >
+                            Abrir Ficha de {hoveredMuni.name}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="font-semibold text-xs text-slate-500 mt-1">Nenhuma emenda no filtro atual</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -1865,8 +2021,8 @@ export default function App() {
           &larr; {selectedEntityFicha ? `Voltar para Ficha de ${selectedEntityFicha.value}` : 'Voltar'}
         </button>
 
-        <div className="bg-white border-2 border-slate-800 shadow-[6px_6px_0_0_#1e293b] print:shadow-none print:border-none">
-          <div className="bg-rose-700 border-b-2 border-slate-800 p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 print:bg-white print:border-b">
+        <div className="bg-white border border-slate-800 shadow-[5px_5px_0_0_#1e293b] print:shadow-none print:border-none">
+          <div className="bg-rose-700 border-b border-slate-800 p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 print:bg-white print:border-b">
             <div>
               <p className="text-rose-100 font-bold uppercase text-xs mb-1 tracking-wider print:text-slate-900">
                 Ficha de Emenda
@@ -1972,8 +2128,8 @@ export default function App() {
           &larr; Voltar
         </button>
 
-        <div className="bg-white border-2 border-slate-800 shadow-[6px_6px_0_0_#1e293b]">
-          <div className="bg-sky-700 border-b-2 border-slate-800 p-5">
+        <div className="bg-white border border-slate-800 shadow-[4px_4px_0_0_#1e293b]">
+          <div className="bg-sky-700 border-b border-slate-800 p-5">
             <h2 className="text-2xl font-black text-white uppercase tracking-tight flex items-center">
               <SettingsIcon className="mr-3 h-6 w-6" /> Configurações
             </h2>
@@ -1986,7 +2142,7 @@ export default function App() {
               </p>
             </div>
             <div className="border border-slate-800 p-5 bg-white">
-              <h3 className="text-base font-black uppercase text-sky-700 border-b-2 border-slate-800 pb-2 mb-4 flex items-center">
+              <h3 className="text-base font-black uppercase text-sky-700 border-b border-slate-800 pb-2 mb-4 flex items-center">
                 <UploadCloudIcon className="h-5 w-5 mr-2" /> Importação CSV Manual
               </h3>
               <input
@@ -1997,7 +2153,7 @@ export default function App() {
               />
             </div>
             <div className="border border-slate-800 p-5 bg-white">
-              <h3 className="text-base font-black uppercase text-slate-900 border-b-2 border-slate-800 pb-2 mb-4">
+              <h3 className="text-base font-black uppercase text-slate-900 border-b border-slate-800 pb-2 mb-4">
                 Segurança Local
               </h3>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -2029,7 +2185,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
-        <div className="text-center p-8 bg-white border-2 border-slate-800 shadow-[6px_6px_0_0_#1e293b]">
+        <div className="text-center p-8 bg-white border border-slate-800 shadow-[4px_4px_0_0_#1e293b]">
           <div className="flex space-x-2 justify-center mb-5">
             <div className="w-5 h-5 bg-rose-700 border border-slate-800 animate-bounce" style={{ animationDelay: '0s' }}></div>
             <div className="w-5 h-5 bg-amber-300 border border-slate-800 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
@@ -2054,7 +2210,7 @@ export default function App() {
 
       {showLoginModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
-          <div className="bg-white border-2 border-slate-800 shadow-[8px_8px_0_0_#1e293b] p-6 sm:p-8 w-full max-w-sm m-4 relative">
+          <div className="bg-white border border-slate-800 shadow-[6px_6px_0_0_#1e293b] p-6 sm:p-8 w-full max-w-sm m-4 relative">
             <button
               onClick={() => setShowLoginModal(false)}
               className="absolute top-4 right-4 bg-white border border-slate-800 p-1 hover:bg-rose-700 hover:text-white transition-colors"
@@ -2071,11 +2227,11 @@ export default function App() {
               onChange={(e) => setLoginInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               placeholder="Senha"
-              className="w-full p-3 bg-white border-2 border-slate-800 rounded-none focus:outline-none focus:border-sky-700 font-medium mb-5 text-slate-900"
+              className="w-full p-3 bg-white border border-slate-800 rounded-none focus:outline-none focus:border-sky-700 font-medium mb-5 text-slate-900"
             />
             <button
               onClick={handleLogin}
-              className="w-full bg-sky-700 text-white font-black text-xs uppercase py-3.5 border-2 border-slate-800 shadow-[3px_3px_0_0_#1e293b] hover:bg-sky-800 transition-transform active:translate-y-0.5 active:shadow-none"
+              className="w-full bg-sky-700 text-white font-black text-xs uppercase py-3.5 border border-slate-800 shadow-[3px_3px_0_0_#1e293b] hover:bg-sky-800 transition-transform active:translate-y-0.5 active:shadow-none"
             >
               Entrar
             </button>
@@ -2085,19 +2241,19 @@ export default function App() {
 
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
-          <div className="bg-white border-2 border-slate-800 shadow-[8px_8px_0_0_#1e293b] p-6 sm:p-8 w-full max-w-md m-4 relative">
+          <div className="bg-white border border-slate-800 shadow-[6px_6px_0_0_#1e293b] p-6 sm:p-8 w-full max-w-md m-4 relative">
             <h3 className="text-xl font-black text-slate-900 uppercase mb-3 tracking-tight">{confirmModal.title}</h3>
             <p className="text-slate-800 text-sm font-medium mb-6 border-l-4 border-amber-300 pl-3">{confirmModal.message}</p>
             <div className="flex flex-col sm:flex-row justify-end gap-3">
               <button
                 onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })}
-                className="px-5 py-2.5 bg-white text-slate-900 font-black text-xs uppercase border-2 border-slate-800 hover:bg-slate-100 shadow-[2px_2px_0_0_#1e293b]"
+                className="px-5 py-2.5 bg-white text-slate-900 font-black text-xs uppercase border border-slate-800 hover:bg-slate-100 shadow-[2px_2px_0_0_#1e293b]"
               >
                 Cancelar
               </button>
               <button
                 onClick={confirmModal.onConfirm}
-                className="px-5 py-2.5 bg-rose-700 text-white font-black text-xs uppercase border-2 border-slate-800 hover:bg-rose-800 shadow-[2px_2px_0_0_#1e293b] flex items-center justify-center"
+                className="px-5 py-2.5 bg-rose-700 text-white font-black text-xs uppercase border border-slate-800 hover:bg-rose-800 shadow-[2px_2px_0_0_#1e293b] flex items-center justify-center"
               >
                 <CheckCircleIcon className="h-4 w-4 mr-1.5" /> Confirmar
               </button>
