@@ -107,6 +107,54 @@ function getModalidade(emenda) {
   return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
 }
 
+function formatDateBr(val) {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (!s || s === '-' || s === '—' || s.toLowerCase() === 'n/a' || s.toLowerCase() === 'null') return '';
+  const mBr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (mBr) return `${mBr[1]}/${mBr[2]}/${mBr[3]}`;
+  const mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (mIso) return `${mIso[3]}/${mIso[2]}/${mIso[1]}`;
+  return s;
+}
+
+function getDataPagamento(emenda, historyList = []) {
+  if (!emenda) return '';
+  const candidatos = [
+    emenda['DATA DO PAGAMENTO'],
+    emenda['DATA DE PAGAMENTO'],
+    emenda['DATA PAGAMENTO'],
+    emenda['Data do Pagamento'],
+    emenda['Data de Pagamento'],
+    emenda['DT_PAGTO_PP'],
+    emenda['DATA_PAGAMENTO']
+  ];
+  for (const c of candidatos) {
+    const fmt = formatDateBr(c);
+    if (fmt) return fmt;
+  }
+  for (const k of Object.keys(emenda)) {
+    const kNorm = normalizeStr(k);
+    if (kNorm.includes('DATA') && kNorm.includes('PAG')) {
+      const fmt = formatDateBr(emenda[k]);
+      if (fmt) return fmt;
+    }
+  }
+  const num = String(emenda['NÚMERO DA EMENDA'] || '').trim();
+  if (num && Array.isArray(historyList) && historyList.length > 0) {
+    const logsPagto = historyList.filter(
+      u => String(u.numeroEmenda || '').trim() === num &&
+           (u.tipo === 'PAGAMENTO' || u.campo === 'PAGO' || String(u.valorNovo || '').toUpperCase().includes('PAGO'))
+    );
+    if (logsPagto.length > 0) {
+      const maisAntigo = logsPagto[logsPagto.length - 1];
+      const fmt = formatDateBr(maisAntigo.dataHora);
+      if (fmt) return fmt;
+    }
+  }
+  return '';
+}
+
 function parseBrDateTime(str) {
   if (!str) return 0;
   const s = String(str).trim();
@@ -138,6 +186,7 @@ function gerarDiffsLocais(antigas, novas, origem = 'Sincronização') {
   const camposMonitorados = [
     { key: 'PAGO', tipo: 'PAGAMENTO' },
     { key: 'SITUAÇÃO', tipo: 'SITUACAO' },
+    { key: 'DATA DO PAGAMENTO', tipo: 'PAGAMENTO' },
     { key: 'SGPe', tipo: 'SGPE' },
     { key: 'TOTAL', tipo: 'VALOR_TOTAL' },
     { key: 'ARTICULADOR', tipo: 'EDICAO_MANUAL' },
@@ -258,7 +307,8 @@ const ENTITY_TYPE_META = {
   articulador: { label: 'Articulador', plural: 'Articuladores', field: 'ARTICULADOR' },
   tema: { label: 'Tema', plural: 'Temas', field: 'TEMA' },
   ano: { label: 'Ano', plural: 'Anos', field: 'ANO' },
-  lideranca: { label: 'Liderança', plural: 'Lideranças', field: 'LIDERANÇA' }
+  lideranca: { label: 'Liderança', plural: 'Lideranças', field: 'LIDERANÇA' },
+  dataPagamento: { label: 'Data de Pagamento', plural: 'Datas de Pagamento', field: 'DATA DO PAGAMENTO' }
 };
 
 export default function App() {
@@ -327,9 +377,9 @@ export default function App() {
       ...e,
       MODALIDADE: getModalidade(e),
       ANO: e.ANO ? String(e.ANO).trim() : (String(e['NÚMERO DA EMENDA'] || '').split('/')[1] || '').trim(),
-      'DATA DO PAGAMENTO': String(e['DATA DO PAGAMENTO'] || '').trim()
+      'DATA DO PAGAMENTO': getDataPagamento(e, updateHistory)
     }));
-  }, [emendas]);
+  }, [emendas, updateHistory]);
 
   const articuladores = useMemo(() => [...new Set(normalizedEmendas.map(e => e.ARTICULADOR).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const municipios = useMemo(() => [...new Set(normalizedEmendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
@@ -784,7 +834,7 @@ export default function App() {
     { key: 'SITUAÇÃO', label: 'Situação' },
     { key: 'TOTAL', label: 'Valor Total' },
     { key: 'PAGO', label: 'Valor Pago' },
-    { key: 'DATA DO PAGAMENTO', label: 'Data do Pagamento' }
+    { key: 'DATA DO PAGAMENTO', label: 'Data de Pagamento' }
   ];
 
   const unreadUpdatesCount = useMemo(() => {
@@ -1914,7 +1964,8 @@ export default function App() {
       'situacao',
       'tema',
       'ano',
-      'lideranca'
+      'lideranca',
+      'dataPagamento'
     ].filter(d => d !== type);
 
     const liderancasDetalhadas = useMemo(() => {
@@ -2516,6 +2567,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // FICHA DE EMENDA (DetailView) COM DATA DE PAGAMENTO EM DESTAQUE
+  // ============================================================================
   const DetailView = () => {
     const isEditing = currentView === 'edit';
     const data = isEditing ? editingEmenda : selectedEmenda;
@@ -2527,8 +2581,14 @@ export default function App() {
       return updateHistory.filter(u => String(u.numeroEmenda || '').trim() === num);
     }, [data, updateHistory]);
 
-    const InfoField = ({ label, field, icon: IconComponent, type = 'text', entityType = null, color = 'blue', isCurrency = false }) => {
-      const rawValue = field === 'MODALIDADE' && !isEditing ? getModalidade(data) : data[field];
+    const dataPagtoResolvida = useMemo(() => getDataPagamento(data, updateHistory), [data, updateHistory]);
+    const temValorPago = parseCurrency(data?.PAGO) > 0 || String(data?.SITUAÇÃO || '').toUpperCase().includes('PAGO');
+
+    const InfoField = ({ label, field, valueOverride = null, emptyFallback = 'N/A', icon: IconComponent, type = 'text', entityType = null, color = 'blue', isCurrency = false }) => {
+      const rawValue = valueOverride !== null
+        ? valueOverride
+        : (field === 'MODALIDADE' && !isEditing ? getModalidade(data) : data[field]);
+
       let displayValue = rawValue;
 
       if (!isEditing && isCurrency) {
@@ -2578,7 +2638,7 @@ export default function App() {
                 {displayValue}
               </button>
             ) : (
-              <span>{displayValue || <span className="text-slate-400 italic">N/A</span>}</span>
+              <span>{displayValue || <span className="text-slate-400 italic">{emptyFallback}</span>}</span>
             )}
             {entityType && rawValue && (
               <button
@@ -2612,9 +2672,22 @@ export default function App() {
         <div className="bg-white border border-slate-300 shadow-xs print:shadow-none print:border-none">
           <div className="bg-rose-700 border-b border-slate-300 p-5 flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 print:bg-white print:border-b">
             <div>
-              <p className="text-rose-100 font-semibold uppercase text-xs mb-1 tracking-wider print:text-slate-900">
-                Ficha de Emenda
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <p className="text-rose-100 font-semibold uppercase text-xs tracking-wider print:text-slate-900">
+                  Ficha de Emenda
+                </p>
+                {data['SITUAÇÃO'] && (
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border ${getSituacaoClasses(data['SITUAÇÃO'])}`}>
+                    {data['SITUAÇÃO']}
+                  </span>
+                )}
+                {dataPagtoResolvida && (
+                  <span className="bg-amber-200 text-slate-900 border border-slate-800 text-[10px] font-bold uppercase px-2 py-0.5 flex items-center gap-1">
+                    <ClockIcon className="w-3 h-3" />
+                    Pago em: {dataPagtoResolvida}
+                  </span>
+                )}
+              </div>
               <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight print:text-slate-900">
                 Nº {data['NÚMERO DA EMENDA']}
               </h2>
@@ -2669,7 +2742,15 @@ export default function App() {
               <InfoField label="Situação" field="SITUAÇÃO" entityType="situacao" color="red" />
               <InfoField label="Total Previsto" field="TOTAL" color="blue" isCurrency={true} />
               <InfoField label="Valor Pago" field="PAGO" color="blue" isCurrency={true} />
-              <InfoField label="Data do Pagamento (Coluna W)" field="DATA DO PAGAMENTO" icon={ClockIcon} color="blue" />
+              <InfoField
+                label="Data de Pagamento"
+                field="DATA DO PAGAMENTO"
+                valueOverride={!isEditing ? dataPagtoResolvida : null}
+                emptyFallback={temValorPago ? 'Pago (data não registrada)' : 'Aguardando pagamento'}
+                icon={ClockIcon}
+                entityType="dataPagamento"
+                color="blue"
+              />
               <InfoField label="Esfera de Aplicação" field="ESFERA DE APLICAÇÃO" color="black" />
               <InfoField label="Unidade Orçamentária" field="UNIDADE ORÇAMENTÁRIA" entityType="uo" color="black" />
             </div>
