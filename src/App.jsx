@@ -42,6 +42,8 @@ const ListIcon = (p) => <Icon {...p} path={<><line x1="8" y1="6" x2="21" y2="6"/
 const DownloadIcon = (p) => <Icon {...p} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></>} />;
 const PrinterIcon = (p) => <Icon {...p} path={<><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></>} />;
 const FilterIcon = (p) => <Icon {...p} path={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></>} />;
+const BellIcon = (p) => <Icon {...p} path={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>} />;
+const ClockIcon = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />;
 
 function parseCSV(text) {
   const csvText = text.replace(/^\uFEFF/, '');
@@ -103,6 +105,94 @@ function getModalidade(emenda) {
     return 'Convênio';
   }
   return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
+}
+
+// Converte string "dd/MM/yyyy HH:mm:ss" em timestamp numérico para ordenação precisa
+function parseBrDateTime(str) {
+  if (!str) return 0;
+  const s = String(str).trim();
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) {
+    const [, dd, mm, yyyy, hh = '00', min = '00', ss = '00'] = m;
+    return new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`).getTime() || 0;
+  }
+  const t = Date.parse(s);
+  return isNaN(t) ? 0 : t;
+}
+
+function formatNowBr() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Detecta diferenças entre a lista antiga e a nova caso a planilha ainda não tenha a aba HISTORICO_ATUALIZACOES
+function gerarDiffsLocais(antigas, novas, origem = 'Sincronização') {
+  if (!Array.isArray(antigas) || antigas.length === 0 || !Array.isArray(novas) || novas.length === 0) {
+    return [];
+  }
+  const mapaAntigas = {};
+  antigas.forEach(e => {
+    const num = String(e['NÚMERO DA EMENDA'] || '').trim();
+    if (num) mapaAntigas[num] = e;
+  });
+
+  const camposMonitorados = [
+    { key: 'PAGO', tipo: 'PAGAMENTO' },
+    { key: 'SITUAÇÃO', tipo: 'SITUACAO' },
+    { key: 'SGPe', tipo: 'SGPE' },
+    { key: 'TOTAL', tipo: 'VALOR_TOTAL' },
+    { key: 'ARTICULADOR', tipo: 'EDICAO_MANUAL' },
+    { key: 'LIDERANÇA', tipo: 'EDICAO_MANUAL' },
+    { key: 'RAZÃO SOCIAL', tipo: 'ATUALIZACAO' }
+  ];
+
+  const agora = formatNowBr();
+  const novosLogs = [];
+
+  novas.forEach(itemNovo => {
+    const num = String(itemNovo['NÚMERO DA EMENDA'] || '').trim();
+    if (!num) return;
+    const mun = String(itemNovo['MUNICÍPIO'] || '').trim();
+    const ent = String(itemNovo['RAZÃO SOCIAL'] || '').trim();
+    const itemAntigo = mapaAntigas[num];
+
+    if (!itemAntigo) {
+      novosLogs.push({
+        id: `local-${num}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        dataHora: agora,
+        numeroEmenda: num,
+        municipio: mun,
+        entidade: ent,
+        tipo: 'NOVA_EMENDA',
+        campo: 'CADASTRO SEF/SC',
+        valorAnterior: '—',
+        valorNovo: `${itemNovo['SITUAÇÃO'] || 'A Pagar'} (${formatCurrency(parseCurrency(itemNovo['TOTAL']))})`,
+        origem
+      });
+    } else {
+      camposMonitorados.forEach(({ key, tipo }) => {
+        const vAnt = String(itemAntigo[key] || '').trim();
+        const vNov = String(itemNovo[key] || '').trim();
+        if (vAnt.toUpperCase() !== vNov.toUpperCase() && (vAnt !== '' || vNov !== '')) {
+          novosLogs.push({
+            id: `local-${num}-${key}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            dataHora: agora,
+            numeroEmenda: num,
+            municipio: mun,
+            entidade: ent || String(itemAntigo['RAZÃO SOCIAL'] || '').trim(),
+            tipo,
+            campo: key,
+            valorAnterior: vAnt || '—',
+            valorNovo: vNov || '—',
+            origem
+          });
+        }
+      });
+    }
+  });
+
+  return novosLogs;
 }
 
 function sortEmendasList(list, sortConfig) {
@@ -167,6 +257,8 @@ const ENTITY_TYPE_META = {
 
 export default function App() {
   const [emendas, setEmendas] = useState([]);
+  const [updateHistory, setUpdateHistory] = useState([]);
+  const [lastSeenUpdateId, setLastSeenUpdateId] = useState('');
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('admin');
@@ -245,14 +337,84 @@ export default function App() {
   const situacoes = useMemo(() => [...new Set(normalizedEmendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const anos = useMemo(() => [...new Set(normalizedEmendas.map(e => String(e.ANO || '').trim()).filter(Boolean))].sort(), [normalizedEmendas]);
 
+  // Mescla histórico vindo da planilha com histórico local sem duplicar
+  const mergeAndSaveHistory = (serverHist = [], localDiffs = [], currentHist = []) => {
+    const combined = [...serverHist, ...localDiffs, ...currentHist];
+    const seen = new Set();
+    const deduped = [];
+    for (const item of combined) {
+      if (!item) continue;
+      const signature = `${item.dataHora?.slice(0, 16)}|${item.numeroEmenda}|${item.campo}|${item.valorAnterior}|${item.valorNovo}`;
+      if (!seen.has(signature)) {
+        seen.add(signature);
+        deduped.push(item);
+      }
+    }
+    deduped.sort((a, b) => parseBrDateTime(b.dataHora) - parseBrDateTime(a.dataHora));
+    const limited = deduped.slice(0, 500);
+    setUpdateHistory(limited);
+    localStorage.setItem('tabulum_emendas_history', JSON.stringify(limited));
+    return limited;
+  };
+
+  // Extrai emendas e histórico do payload da API (compatível com array puro ou objeto)
+  const processarPayloadServidor = (rawPayload, baseAnterior = [], histAnterior = []) => {
+    let listaEmendas = [];
+    let histServidor = [];
+
+    if (Array.isArray(rawPayload)) {
+      listaEmendas = rawPayload.map(item => ({ ...item }));
+      if (listaEmendas.length > 0 && Array.isArray(listaEmendas[0].__historico)) {
+        histServidor = listaEmendas[0].__historico;
+        delete listaEmendas[0].__historico;
+      }
+    } else if (rawPayload && typeof rawPayload === 'object') {
+      if (Array.isArray(rawPayload.emendas)) {
+        listaEmendas = rawPayload.emendas.map(item => ({ ...item }));
+        if (listaEmendas.length > 0 && Array.isArray(listaEmendas[0].__historico)) {
+          histServidor = listaEmendas[0].__historico;
+          delete listaEmendas[0].__historico;
+        }
+      }
+      if (Array.isArray(rawPayload.historico)) {
+        histServidor = rawPayload.historico;
+      }
+    }
+
+    if (listaEmendas.length > 0) {
+      const diffs = histServidor.length === 0 ? gerarDiffsLocais(baseAnterior, listaEmendas, 'Sincronização Planilha') : [];
+      mergeAndSaveHistory(histServidor, diffs, histAnterior);
+      setEmendas(listaEmendas);
+      localStorage.setItem('tabulum_emendas_data', JSON.stringify(listaEmendas));
+    }
+  };
+
   useEffect(() => {
     document.title = "TABULUM - Emendas";
 
     const loadData = async () => {
+      let cachedEmendas = [];
+      let cachedHistory = [];
+
       const storedEmendas = localStorage.getItem('tabulum_emendas_data');
       if (storedEmendas) {
-        try { setEmendas(JSON.parse(storedEmendas)); } catch (e) {}
+        try {
+          cachedEmendas = JSON.parse(storedEmendas);
+          setEmendas(cachedEmendas);
+        } catch (e) {}
       }
+
+      const storedHistory = localStorage.getItem('tabulum_emendas_history');
+      if (storedHistory) {
+        try {
+          cachedHistory = JSON.parse(storedHistory);
+          setUpdateHistory(cachedHistory);
+        } catch (e) {}
+      }
+
+      const storedLastSeen = localStorage.getItem('tabulum_emendas_last_seen_update');
+      if (storedLastSeen) setLastSeenUpdateId(storedLastSeen);
+
       const storedAuth = sessionStorage.getItem('tabulum_emendas_auth');
       if (storedAuth === 'true') setIsAdmin(true);
       const storedPass = localStorage.getItem('tabulum_emendas_pass');
@@ -262,10 +424,7 @@ export default function App() {
         const response = await fetch('/api/emendas');
         if (response.ok) {
           const newData = await response.json();
-          if (newData && newData.length > 0) {
-            setEmendas(newData);
-            localStorage.setItem('tabulum_emendas_data', JSON.stringify(newData));
-          }
+          processarPayloadServidor(newData, cachedEmendas, cachedHistory);
         }
       } catch (error) {
         console.error("Erro ao sincronizar com servidor interno:", error);
@@ -321,10 +480,8 @@ export default function App() {
       const response = await fetch('/api/emendas');
       if (!response.ok) throw new Error("Falha ao carregar do servidor interno.");
       const newData = await response.json();
-      if (newData && newData.length > 0) {
-        saveEmendasLocally(newData);
-        alert("Sincronização concluída com sucesso!");
-      }
+      processarPayloadServidor(newData, emendas, updateHistory);
+      alert("Sincronização concluída com sucesso!");
     } catch (error) {
       console.error("Erro ao sincronizar com proxy interno:", error);
       alert("Erro ao sincronizar. Verifique a conexão com o servidor.");
@@ -336,6 +493,12 @@ export default function App() {
   const handleSaveEmenda = async () => {
     if (!editingEmenda) return;
     try {
+      const emendaAntiga = emendas.find(e => e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA']);
+      const diffsEdicao = emendaAntiga ? gerarDiffsLocais([emendaAntiga], [editingEmenda], 'Painel Mandato') : [];
+      if (diffsEdicao.length > 0) {
+        mergeAndSaveHistory([], diffsEdicao, updateHistory);
+      }
+
       const updatedEmendas = emendas.map(e =>
         e['NÚMERO DA EMENDA'] === editingEmenda['NÚMERO DA EMENDA'] ? editingEmenda : e
       );
@@ -375,6 +538,8 @@ export default function App() {
             });
             return obj;
           }).filter(em => em['NÚMERO DA EMENDA']);
+          const diffs = gerarDiffsLocais(emendas, newData, 'Importação CSV');
+          mergeAndSaveHistory([], diffs, updateHistory);
           saveEmendasLocally(newData);
           alert("Base importada com sucesso via CSV!");
         } else {
@@ -436,6 +601,19 @@ export default function App() {
     setSelectedEntityFicha({ type, value: cleanVal });
     setCurrentView('entity');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openEmendaByNumber = (numEmenda, e = null) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const target = normalizedEmendas.find(
+      em => String(em['NÚMERO DA EMENDA'] || '').trim() === String(numEmenda || '').trim()
+    );
+    if (target) {
+      setSelectedEmenda(target);
+      setOpenDropdown(null);
+      setCurrentView('detail');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const goBackFromEntityFicha = () => {
@@ -567,6 +745,27 @@ export default function App() {
     return 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100';
   };
 
+  const getUpdateTypeBadge = (tipo, campo) => {
+    const t = String(tipo || '').toUpperCase();
+    const c = String(campo || '').toUpperCase();
+    if (t === 'PAGAMENTO' || c === 'PAGO') {
+      return { label: 'Pagamento', classes: 'bg-sky-700 text-white border-slate-800' };
+    }
+    if (t === 'SITUACAO' || c === 'SITUAÇÃO') {
+      return { label: 'Situação', classes: 'bg-amber-300 text-slate-900 border-slate-700' };
+    }
+    if (t === 'NOVA_EMENDA') {
+      return { label: 'Nova Emenda', classes: 'bg-rose-700 text-white border-rose-900' };
+    }
+    if (t === 'SGPE' || c === 'SGPE') {
+      return { label: 'SGPe', classes: 'bg-sky-50 text-sky-900 border-sky-600' };
+    }
+    if (t === 'EDICAO_MANUAL') {
+      return { label: 'Edição Mandato', classes: 'bg-rose-50 text-rose-800 border-rose-600' };
+    }
+    return { label: campo || 'Atualização', classes: 'bg-slate-100 text-slate-700 border-slate-300' };
+  };
+
   const sortableFieldsList = [
     { key: 'NÚMERO DA EMENDA', label: 'Número' },
     { key: 'ANO', label: 'Ano' },
@@ -585,10 +784,29 @@ export default function App() {
     { key: 'PAGO', label: 'Valor Pago' }
   ];
 
-  // Título dinâmico da página exibido na 1ª linha da barra superior
+  // Quantidade de notificações não lidas desde a última vez que o usuário abriu o sino
+  const unreadUpdatesCount = useMemo(() => {
+    if (!updateHistory || updateHistory.length === 0) return 0;
+    if (!lastSeenUpdateId) return Math.min(updateHistory.length, 7);
+    const idx = updateHistory.findIndex(u => u.id === lastSeenUpdateId);
+    return idx === -1 ? Math.min(updateHistory.length, 7) : idx;
+  }, [updateHistory, lastSeenUpdateId]);
+
+  const handleToggleNotifications = (e) => {
+    e.stopPropagation();
+    const isOpening = openDropdown !== 'notifications';
+    setOpenDropdown(isOpening ? 'notifications' : null);
+    if (isOpening && updateHistory.length > 0) {
+      const latestId = updateHistory[0].id;
+      setLastSeenUpdateId(latestId);
+      localStorage.setItem('tabulum_emendas_last_seen_update', latestId);
+    }
+  };
+
   const getCurrentPageTitle = () => {
     if (currentView === 'list') return 'Painel';
     if (currentView === 'dashboard') return 'Dashboard';
+    if (currentView === 'updates') return 'Histórico de Atualizações';
     if (currentView === 'entity' && selectedEntityFicha) {
       const meta = ENTITY_TYPE_META[selectedEntityFicha.type];
       return `${meta ? meta.label : 'Ficha'}: ${selectedEntityFicha.value}`;
@@ -600,7 +818,6 @@ export default function App() {
     return 'Painel';
   };
 
-  // MultiSelect minimalista, delicado e sem caixa alta agressiva
   const MultiSelect = ({ id, label, options, selected, onChange }) => {
     const isOpen = openDropdown === id;
     const [optionSearch, setOptionSearch] = useState('');
@@ -688,7 +905,7 @@ export default function App() {
   };
 
   // ============================================================================
-  // BARRA SUPERIOR ÚNICA E FIXA (Linha 1: Navegação e Título | Linha 2: Filtros, Ordenação, Exibição e Exportação)
+  // BARRA SUPERIOR ÚNICA E FIXA (Com Sino de Notificações das 7 Últimas Atualizações)
   // ============================================================================
   const UnifiedTopBar = () => {
     const activeFilterCount =
@@ -707,6 +924,8 @@ export default function App() {
       ? normalizedEmendas.filter(e => String(e[ENTITY_TYPE_META[selectedEntityFicha.type]?.field] || '').trim().toLowerCase() === String(selectedEntityFicha.value).trim().toLowerCase())
       : filteredAndSortedEmendas;
 
+    const latestSevenUpdates = updateHistory.slice(0, 7);
+
     return (
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-300 shadow-2xs print:hidden">
         {/* Filete Mondrian Delicado */}
@@ -716,7 +935,7 @@ export default function App() {
           <div className="w-1/3 bg-amber-300"></div>
         </div>
 
-        {/* LINHA 1: Logo + Título do App + Título da Página Atual + Botões Painel/Dashboard + Sincronizar + Admin/Sair */}
+        {/* LINHA 1: Logo + Título do App + Título da Página Atual + Botões Painel/Dashboard + Sincronizar + Notificações + Admin/Sair */}
         <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 h-12 flex items-center justify-between gap-2 border-b border-slate-200/80">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="flex items-center cursor-pointer group flex-shrink-0" onClick={resetToFrontPage} title="Voltar ao Início">
@@ -770,8 +989,110 @@ export default function App() {
             )}
           </div>
 
-          {/* Botões de Admin, Ajustes e Saída */}
+          {/* Lado Direito da 1ª Linha: Notificações (7 últimas + link para todas) + Admin/Editar */}
           <div className="flex items-center space-x-1.5 flex-shrink-0">
+            {/* Botão e Menu Suspenso de Notificações */}
+            <div className="relative">
+              <button
+                onClick={handleToggleNotifications}
+                className={`relative px-2.5 py-1 border rounded-xs flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                  openDropdown === 'notifications' || currentView === 'updates'
+                    ? 'bg-sky-700 text-white border-sky-800'
+                    : 'bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-300'
+                }`}
+                title="Últimas atualizações da planilha"
+              >
+                <BellIcon className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Atualizações</span>
+                {unreadUpdatesCount > 0 && (
+                  <span className="bg-rose-700 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight">
+                    {unreadUpdatesCount}
+                  </span>
+                )}
+              </button>
+
+              {openDropdown === 'notifications' && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-white border border-slate-300 shadow-lg rounded-xs z-50 overflow-hidden"
+                >
+                  <div className="bg-slate-800 text-white px-3.5 py-2.5 flex items-center justify-between border-b border-slate-300">
+                    <div className="flex items-center gap-1.5">
+                      <BellIcon className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="text-xs font-bold uppercase tracking-wider">Últimas 7 Atualizações</span>
+                    </div>
+                    <span className="text-[10px] text-slate-300 font-medium">
+                      {updateHistory.length} no histórico
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                    {latestSevenUpdates.length > 0 ? (
+                      latestSevenUpdates.map((item, idx) => {
+                        const badge = getUpdateTypeBadge(item.tipo, item.campo);
+                        return (
+                          <div
+                            key={item.id || idx}
+                            onClick={(e) => openEmendaByNumber(item.numeroEmenda, e)}
+                            className="p-3 hover:bg-amber-50/60 cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 border ${badge.classes}`}>
+                                  {badge.label}
+                                </span>
+                                <span className="text-xs font-bold text-slate-900">
+                                  #{item.numeroEmenda}
+                                </span>
+                                {item.municipio && (
+                                  <span className="text-[10px] font-semibold uppercase text-sky-700 truncate max-w-[110px]">
+                                    • {item.municipio}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                {item.dataHora}
+                              </span>
+                            </div>
+
+                            {item.entidade && (
+                              <p className="text-[11px] font-semibold text-rose-700 truncate mb-0.5">
+                                {item.entidade}
+                              </p>
+                            )}
+
+                            <p className="text-xs text-slate-700 leading-snug break-words">
+                              <span className="font-semibold text-slate-600">{item.campo}:</span>{' '}
+                              <span className="line-through text-slate-400">{item.valorAnterior || '—'}</span>{' '}
+                              <span className="text-slate-400">→</span>{' '}
+                              <span className="font-bold text-slate-900">{item.valorNovo || '—'}</span>
+                            </p>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="p-6 text-center text-xs text-slate-400">
+                        Nenhuma modificação recente registrada ainda. Assim que o robô ou a equipe atualizar a planilha, as mudanças aparecerão aqui.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-amber-100/80 border-t border-slate-300 p-2 text-center">
+                    <button
+                      onClick={() => {
+                        setOpenDropdown(null);
+                        setCurrentView('updates');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full py-1.5 bg-white hover:bg-sky-700 hover:text-white text-slate-900 border border-slate-300 text-xs font-bold uppercase transition-colors rounded-xs"
+                    >
+                      Ver todas as modificações ({updateHistory.length}) →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {isAdmin ? (
               <>
                 <span className="hidden lg:inline-flex items-center bg-sky-50 border border-sky-200 text-sky-900 px-2 py-0.5 text-[11px] font-medium rounded-xs">
@@ -854,7 +1175,6 @@ export default function App() {
 
             {/* Lado Direito: Ordenar Por + Alternância Lista/Card + Paginação dos Cards + Exportar CSV/PDF */}
             <div className="flex flex-wrap items-center gap-2 ml-auto">
-              {/* Caixa Ordenar Por */}
               <div className="flex items-center border border-slate-200 rounded-xs bg-slate-50/70">
                 <select
                   value={sortConfig.key || ''}
@@ -878,7 +1198,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Seleção Lista ou Card + Quantidade por página quando em Card */}
               {currentView !== 'dashboard' && (
                 <div className="flex items-center gap-1.5">
                   <div className="flex border border-slate-200 rounded-xs overflow-hidden bg-slate-50/70">
@@ -920,7 +1239,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Botões Discretos de Exportar (CSV e PDF) com a palavra Exportar */}
               <div className="flex items-center border border-slate-200 rounded-xs bg-slate-50/70 overflow-hidden">
                 <span className="px-2 py-1 text-[11px] text-slate-500 border-r border-slate-200 select-none">
                   Exportar:
@@ -948,6 +1266,246 @@ export default function App() {
   };
 
   // ============================================================================
+  // PÁGINA COMPLETA DE HISTÓRICO DE ATUALIZAÇÕES (Todas as modificações guardadas)
+  // ============================================================================
+  const UpdatesHistoryView = () => {
+    const [histSearch, setHistSearch] = useState('');
+    const [histTypeFilter, setHistTypeFilter] = useState('TODOS');
+    const [histSort, setHistSort] = useState({ key: 'dataHora', direction: 'desc' });
+
+    const filteredHistory = useMemo(() => {
+      const list = updateHistory.filter(item => {
+        const matchesSearch =
+          histSearch === '' ||
+          JSON.stringify(item).toLowerCase().includes(histSearch.toLowerCase());
+
+        if (!matchesSearch) return false;
+        if (histTypeFilter === 'TODOS') return true;
+        if (histTypeFilter === 'PAGAMENTO') return item.tipo === 'PAGAMENTO' || item.campo === 'PAGO';
+        if (histTypeFilter === 'SITUACAO') return item.tipo === 'SITUACAO' || item.campo === 'SITUAÇÃO';
+        if (histTypeFilter === 'NOVA_EMENDA') return item.tipo === 'NOVA_EMENDA';
+        if (histTypeFilter === 'SGPE') return item.tipo === 'SGPE' || item.campo === 'SGPe';
+        if (histTypeFilter === 'EDICAO_MANUAL') return item.tipo === 'EDICAO_MANUAL';
+        return true;
+      });
+
+      list.sort((a, b) => {
+        if (histSort.key === 'dataHora') {
+          const tA = parseBrDateTime(a.dataHora);
+          const tB = parseBrDateTime(b.dataHora);
+          return histSort.direction === 'asc' ? tA - tB : tB - tA;
+        }
+        const sA = String(a[histSort.key] || '').trim();
+        const sB = String(b[histSort.key] || '').trim();
+        const cmp = sA.localeCompare(sB, 'pt-BR', { sensitivity: 'base', numeric: true });
+        return histSort.direction === 'asc' ? cmp : -cmp;
+      });
+
+      return list;
+    }, [updateHistory, histSearch, histTypeFilter, histSort]);
+
+    const requestHistSort = (key) => {
+      setHistSort(prev => ({
+        key,
+        direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+      }));
+    };
+
+    const countPagamentos = updateHistory.filter(u => u.tipo === 'PAGAMENTO' || u.campo === 'PAGO').length;
+    const countSituacoes = updateHistory.filter(u => u.tipo === 'SITUACAO' || u.campo === 'SITUAÇÃO').length;
+    const countNovas = updateHistory.filter(u => u.tipo === 'NOVA_EMENDA').length;
+
+    const HistSortableHeader = ({ label, colKey, extraClasses = "" }) => {
+      const isActive = histSort.key === colKey;
+      return (
+        <th
+          onClick={() => requestHistSort(colKey)}
+          className={`py-2.5 px-3 text-left text-[11px] font-bold text-slate-800 uppercase cursor-pointer hover:bg-amber-300/70 border-r border-slate-300 select-none ${extraClasses}`}
+        >
+          <div className="flex items-center justify-between gap-1">
+            <span>{label}</span>
+            {isActive ? (
+              histSort.direction === 'asc' ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronUpIcon className="w-3.5 h-3.5 opacity-20" />
+            )}
+          </div>
+        </th>
+      );
+    };
+
+    return (
+      <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-4 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
+        {/* Topo da Página de Histórico */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 print:hidden">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentView('list')}
+              className="bg-slate-800 text-white px-3 py-1.5 font-semibold text-xs rounded-xs hover:bg-slate-700 flex items-center"
+            >
+              ← Voltar ao Painel
+            </button>
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+              <ClockIcon className="w-5 h-5 text-rose-700" />
+              Registro Completo de Atualizações da Planilha
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportRowsToCSV(filteredHistory, "historico_atualizacoes_emendas.csv")}
+              className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-amber-100 text-xs font-semibold text-slate-800 rounded-xs flex items-center"
+            >
+              <DownloadIcon className="w-3.5 h-3.5 mr-1.5" /> Exportar CSV
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold rounded-xs flex items-center"
+            >
+              <PrinterIcon className="w-3.5 h-3.5 mr-1.5" /> Imprimir / PDF
+            </button>
+          </div>
+        </div>
+
+        {/* Cards de Resumo das Atualizações */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white border border-slate-300 p-3.5 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-slate-400">Total de Modificações</p>
+            <p className="text-2xl font-black text-slate-900 mt-0.5">{updateHistory.length}</p>
+          </div>
+          <div className="bg-sky-50/70 border border-sky-200 p-3.5 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-sky-800">Pagamentos Registrados</p>
+            <p className="text-2xl font-black text-sky-800 mt-0.5">{countPagamentos}</p>
+          </div>
+          <div className="bg-amber-50/80 border border-amber-200 p-3.5 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-amber-900">Mudanças de Situação</p>
+            <p className="text-2xl font-black text-amber-900 mt-0.5">{countSituacoes}</p>
+          </div>
+          <div className="bg-rose-50/70 border border-rose-200 p-3.5 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-rose-800">Novas Emendas Incluídas</p>
+            <p className="text-2xl font-black text-rose-700 mt-0.5">{countNovas}</p>
+          </div>
+        </div>
+
+        {/* Barra de Filtro e Busca do Histórico */}
+        <div className="bg-white border border-slate-300 p-3 mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nº da emenda, município, entidade, data ou valor..."
+              value={histSearch}
+              onChange={(e) => setHistSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xs text-xs focus:outline-none focus:border-sky-600 focus:bg-white"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'TODOS', label: 'Todas' },
+              { id: 'PAGAMENTO', label: 'Pagamentos' },
+              { id: 'SITUACAO', label: 'Situação' },
+              { id: 'NOVA_EMENDA', label: 'Novas Emendas' },
+              { id: 'SGPE', label: 'SGPe' },
+              { id: 'EDICAO_MANUAL', label: 'Edições Manuais' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setHistTypeFilter(tab.id)}
+                className={`px-2.5 py-1 text-xs rounded-xs border transition-colors ${
+                  histTypeFilter === tab.id
+                    ? 'bg-slate-800 text-white border-slate-800 font-semibold'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabela Completa de Histórico */}
+        <div className="bg-white border border-slate-300 overflow-x-auto shadow-xs">
+          <table className="min-w-[1000px] w-full border-collapse table-fixed">
+            <thead className="bg-amber-200/85 border-b border-slate-400">
+              <tr>
+                <HistSortableHeader label="Data / Hora" colKey="dataHora" extraClasses="w-[145px]" />
+                <HistSortableHeader label="Tipo" colKey="tipo" extraClasses="w-[120px]" />
+                <HistSortableHeader label="Nº Emenda" colKey="numeroEmenda" extraClasses="w-[100px]" />
+                <HistSortableHeader label="Município" colKey="municipio" extraClasses="w-[150px]" />
+                <HistSortableHeader label="Entidade" colKey="entidade" extraClasses="w-[220px]" />
+                <HistSortableHeader label="Campo Alterado" colKey="campo" extraClasses="w-[130px]" />
+                <HistSortableHeader label="Valor Anterior" colKey="valorAnterior" extraClasses="w-[150px]" />
+                <HistSortableHeader label="Valor Novo" colKey="valorNovo" extraClasses="w-[160px]" />
+                <HistSortableHeader label="Origem" colKey="origem" extraClasses="w-[120px] border-r-0" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs">
+              {filteredHistory.map((item, idx) => {
+                const badge = getUpdateTypeBadge(item.tipo, item.campo);
+                return (
+                  <tr
+                    key={item.id || idx}
+                    onClick={() => openEmendaByNumber(item.numeroEmenda)}
+                    className="hover:bg-amber-50/50 cursor-pointer transition-colors"
+                  >
+                    <td className="py-2.5 px-3 font-medium text-slate-600 border-r border-slate-200 whitespace-nowrap">
+                      {item.dataHora}
+                    </td>
+                    <td className="py-2.5 px-3 border-r border-slate-200">
+                      <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.5 border ${badge.classes}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-bold text-slate-900 hover:text-rose-700 hover:underline border-r border-slate-200">
+                      #{item.numeroEmenda}
+                    </td>
+                    <td
+                      onClick={(e) => item.municipio && openEntityFicha('municipio', item.municipio, e)}
+                      className="py-2.5 px-3 font-bold uppercase text-sky-700 hover:underline border-r border-slate-200 whitespace-normal break-words"
+                    >
+                      {item.municipio || '-'}
+                    </td>
+                    <td
+                      onClick={(e) => item.entidade && openEntityFicha('entidade', item.entidade, e)}
+                      className="py-2.5 px-3 font-medium text-slate-800 hover:text-rose-700 hover:underline border-r border-slate-200 whitespace-normal break-words"
+                    >
+                      {item.entidade || '-'}
+                    </td>
+                    <td className="py-2.5 px-3 font-semibold uppercase text-slate-700 border-r border-slate-200">
+                      {item.campo}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-400 line-through border-r border-slate-200 whitespace-normal break-words">
+                      {item.valorAnterior || '—'}
+                    </td>
+                    <td className="py-2.5 px-3 font-bold text-slate-900 border-r border-slate-200 whitespace-normal break-words">
+                      {item.valorNovo || '—'}
+                    </td>
+                    <td className="py-2.5 px-3 text-[11px] text-slate-500">
+                      {item.origem || 'Robô SEF/SC'}
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredHistory.length === 0 && (
+                <tr>
+                  <td colSpan="9" className="py-12 px-6 text-center text-slate-400 uppercase font-medium">
+                    Nenhum registro de atualização encontrado para este filtro.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="bg-slate-50 px-4 py-2 text-xs text-slate-600 flex justify-between border-t border-slate-300 print:hidden">
+            <span>Exibindo <strong>{filteredHistory.length}</strong> de <strong>{updateHistory.length}</strong> modificações registradas</span>
+            <span>Clique em qualquer linha para abrir a Ficha da Emenda</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================================
   // TABELA (NA ÍNTEGRA, TEXTOS POR INTEIRO E OBJETO MAIS LARGO) E CARDS (PAGINADOS)
   // ============================================================================
   const renderEmendasTableOrCards = (rows, activeSortConfig, onRequestSort, activeViewMode) => {
@@ -971,7 +1529,6 @@ export default function App() {
       );
     };
 
-    // MODO LISTA: Exibe todas as emendas na íntegra e com os nomes de Município, Entidade e Objeto por inteiro
     if (activeViewMode === 'table') {
       return (
         <div className="bg-white border border-slate-300 overflow-x-auto shadow-xs print:shadow-none print:border print:overflow-visible print:w-full">
@@ -1098,7 +1655,6 @@ export default function App() {
       );
     }
 
-    // MODO CARD: Paginado (5, 25, 50, 100, 200, Todas - padrão 50) e com textos completos
     const totalCards = rows.length;
     const effectivePerPage = cardsPerPage === 'all' ? (totalCards || 1) : Number(cardsPerPage);
     const totalPages = Math.max(Math.ceil(totalCards / effectivePerPage), 1);
@@ -1136,7 +1692,7 @@ export default function App() {
                 onClick={() => { setCurrentCardPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 className="px-2 py-0.5 border border-slate-300 rounded-xs bg-slate-50 hover:bg-amber-100 disabled:opacity-40 disabled:pointer-events-none font-medium"
               >
-                &larr; Anterior
+                ← Anterior
               </button>
               <span className="px-2 font-semibold text-slate-800">
                 Pág. {safePage} de {totalPages}
@@ -1146,7 +1702,7 @@ export default function App() {
                 onClick={() => { setCurrentCardPage(p => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 className="px-2 py-0.5 border border-slate-300 rounded-xs bg-slate-50 hover:bg-amber-100 disabled:opacity-40 disabled:pointer-events-none font-medium"
               >
-                Próxima &rarr;
+                Próxima →
               </button>
             </div>
           )}
@@ -1415,7 +1971,7 @@ export default function App() {
               onClick={goBackFromEntityFicha}
               className="bg-slate-800 text-white px-3 py-1.5 font-semibold text-xs rounded-xs hover:bg-slate-700 flex items-center"
             >
-              &larr; {entityHistory.length > 0 ? `Voltar para ${entityHistory[entityHistory.length - 1].value}` : 'Voltar ao Painel'}
+              ← {entityHistory.length > 0 ? `Voltar para ${entityHistory[entityHistory.length - 1].value}` : 'Voltar ao Painel'}
             </button>
             <button
               onClick={() => applyEntityFilterToMainList(type, value)}
@@ -1982,6 +2538,12 @@ export default function App() {
     const data = isEditing ? editingEmenda : selectedEmenda;
     const handleInputChange = (field, value) => setEditingEmenda(prev => ({ ...prev, [field]: value }));
 
+    const emendaUpdates = useMemo(() => {
+      if (!data) return [];
+      const num = String(data['NÚMERO DA EMENDA'] || '').trim();
+      return updateHistory.filter(u => String(u.numeroEmenda || '').trim() === num);
+    }, [data, updateHistory]);
+
     const InfoField = ({ label, field, icon: IconComponent, type = 'text', entityType = null, color = 'blue', isCurrency = false }) => {
       const rawValue = field === 'MODALIDADE' && !isEditing ? getModalidade(data) : data[field];
       let displayValue = rawValue;
@@ -2061,7 +2623,7 @@ export default function App() {
           }}
           className="bg-slate-800 text-white px-3.5 py-1.5 font-semibold uppercase text-xs rounded-xs hover:bg-slate-700 mb-4 flex items-center print:hidden"
         >
-          &larr; {selectedEntityFicha ? `Voltar para Ficha de ${selectedEntityFicha.value}` : 'Voltar ao Painel'}
+          ← {selectedEntityFicha ? `Voltar para Ficha de ${selectedEntityFicha.value}` : 'Voltar ao Painel'}
         </button>
 
         <div className="bg-white border border-slate-300 shadow-xs print:shadow-none print:border-none">
@@ -2153,6 +2715,43 @@ export default function App() {
               <InfoField label="Justificativa" field="JUSTIFICATIVA" type="textarea" color="black" />
               <InfoField label="Observações Livres" field="Observação" type="textarea" color="black" />
             </div>
+
+            {/* Histórico de Atualizações e Pagamentos desta Emenda */}
+            {!isEditing && (
+              <div className="col-span-1 md:col-span-2 bg-slate-50/80 border border-slate-200 p-4">
+                <div className="bg-slate-800 text-white font-bold uppercase text-xs py-1 px-2.5 inline-flex items-center gap-1.5 mb-3">
+                  <ClockIcon className="w-3.5 h-3.5 text-amber-300" />
+                  Histórico de Atualizações desta Emenda ({emendaUpdates.length})
+                </div>
+                {emendaUpdates.length > 0 ? (
+                  <div className="divide-y divide-slate-200 bg-white border border-slate-200">
+                    {emendaUpdates.map((u, i) => {
+                      const badge = getUpdateTypeBadge(u.tipo, u.campo);
+                      return (
+                        <div key={u.id || i} className="p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${badge.classes}`}>
+                              {badge.label}
+                            </span>
+                            <span className="font-semibold text-slate-700">{u.campo}:</span>
+                            <span className="line-through text-slate-400">{u.valorAnterior || '—'}</span>
+                            <span className="text-slate-400">→</span>
+                            <span className="font-bold text-slate-900">{u.valorNovo || '—'}</span>
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-500">
+                            {u.dataHora} ({u.origem || 'Robô SEF/SC'})
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">
+                    Nenhuma alteração de status ou pagamento registrada para esta emenda desde a ativação do histórico.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2168,7 +2767,7 @@ export default function App() {
           onClick={() => setCurrentView('list')}
           className="bg-slate-800 text-white px-3.5 py-1.5 font-semibold uppercase text-xs rounded-xs hover:bg-slate-700 mb-4 flex items-center"
         >
-          &larr; Voltar
+          ← Voltar
         </button>
 
         <div className="bg-white border border-slate-300 shadow-xs">
@@ -2246,6 +2845,7 @@ export default function App() {
       <main>
         {currentView === 'list' && <ListView />}
         {currentView === 'dashboard' && <DashboardView />}
+        {currentView === 'updates' && <UpdatesHistoryView />}
         {currentView === 'entity' && <EntityProfileView />}
         {(currentView === 'detail' || currentView === 'edit') && <DetailView />}
         {currentView === 'settings' && <SettingsView />}
