@@ -107,7 +107,6 @@ function getModalidade(emenda) {
   return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
 }
 
-// Converte string "dd/MM/yyyy HH:mm:ss" em timestamp numérico para ordenação precisa
 function parseBrDateTime(str) {
   if (!str) return 0;
   const s = String(str).trim();
@@ -126,7 +125,6 @@ function formatNowBr() {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-// Detecta diferenças entre a lista antiga e a nova caso a planilha ainda não tenha a aba HISTORICO_ATUALIZACOES
 function gerarDiffsLocais(antigas, novas, origem = 'Sincronização') {
   if (!Array.isArray(antigas) || antigas.length === 0 || !Array.isArray(novas) || novas.length === 0) {
     return [];
@@ -208,6 +206,14 @@ function sortEmendasList(list, sortConfig) {
       return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
     }
 
+    if (sortConfig.key === 'DATA DO PAGAMENTO') {
+      const tA = parseBrDateTime(valA);
+      const tB = parseBrDateTime(valB);
+      if (!tA && tB) return 1;
+      if (tA && !tB) return -1;
+      return sortConfig.direction === 'asc' ? tA - tB : tB - tA;
+    }
+
     if (sortConfig.key === 'ANO') {
       const numA = parseInt(valA) || 0;
       const numB = parseInt(valB) || 0;
@@ -272,11 +278,9 @@ export default function App() {
   const [selectedEntityFicha, setSelectedEntityFicha] = useState(null);
   const [entityHistory, setEntityHistory] = useState([]);
 
-  // Paginação exclusiva para o modo Card (5, 25, 50, 100, 200, Todas - padrão 50)
   const [cardsPerPage, setCardsPerPage] = useState(50);
   const [currentCardPage, setCurrentCardPage] = useState(1);
 
-  // Filtros Universais de Multiseleção
   const [searchTerm, setSearchTerm] = useState('');
   const [filterArticuladores, setFilterArticuladores] = useState([]);
   const [filterMunicipios, setFilterMunicipios] = useState([]);
@@ -301,7 +305,6 @@ export default function App() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Volta para a página 1 dos cards sempre que filtros ou ordenação mudarem
   useEffect(() => {
     setCurrentCardPage(1);
   }, [
@@ -323,7 +326,8 @@ export default function App() {
     return emendas.map(e => ({
       ...e,
       MODALIDADE: getModalidade(e),
-      ANO: e.ANO ? String(e.ANO).trim() : (String(e['NÚMERO DA EMENDA'] || '').split('/')[1] || '').trim()
+      ANO: e.ANO ? String(e.ANO).trim() : (String(e['NÚMERO DA EMENDA'] || '').split('/')[1] || '').trim(),
+      'DATA DO PAGAMENTO': String(e['DATA DO PAGAMENTO'] || '').trim()
     }));
   }, [emendas]);
 
@@ -337,7 +341,6 @@ export default function App() {
   const situacoes = useMemo(() => [...new Set(normalizedEmendas.map(e => e.SITUAÇÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const anos = useMemo(() => [...new Set(normalizedEmendas.map(e => String(e.ANO || '').trim()).filter(Boolean))].sort(), [normalizedEmendas]);
 
-  // Mescla histórico vindo da planilha com histórico local sem duplicar
   const mergeAndSaveHistory = (serverHist = [], localDiffs = [], currentHist = []) => {
     const combined = [...serverHist, ...localDiffs, ...currentHist];
     const seen = new Set();
@@ -357,7 +360,6 @@ export default function App() {
     return limited;
   };
 
-  // Extrai emendas e histórico do payload da API (compatível com array puro ou objeto)
   const processarPayloadServidor = (rawPayload, baseAnterior = [], histAnterior = []) => {
     let listaEmendas = [];
     let histServidor = [];
@@ -781,10 +783,10 @@ export default function App() {
     { key: 'LIDERANÇA', label: 'Liderança' },
     { key: 'SITUAÇÃO', label: 'Situação' },
     { key: 'TOTAL', label: 'Valor Total' },
-    { key: 'PAGO', label: 'Valor Pago' }
+    { key: 'PAGO', label: 'Valor Pago' },
+    { key: 'DATA DO PAGAMENTO', label: 'Data do Pagamento' }
   ];
 
-  // Quantidade de notificações não lidas desde a última vez que o usuário abriu o sino
   const unreadUpdatesCount = useMemo(() => {
     if (!updateHistory || updateHistory.length === 0) return 0;
     if (!lastSeenUpdateId) return Math.min(updateHistory.length, 7);
@@ -904,9 +906,6 @@ export default function App() {
     );
   };
 
-  // ============================================================================
-  // BARRA SUPERIOR ÚNICA E FIXA (Com Sino de Notificações das 7 Últimas Atualizações)
-  // ============================================================================
   const UnifiedTopBar = () => {
     const activeFilterCount =
       filterArticuladores.length +
@@ -928,14 +927,12 @@ export default function App() {
 
     return (
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-300 shadow-2xs print:hidden">
-        {/* Filete Mondrian Delicado */}
         <div className="h-1 w-full flex">
           <div className="w-1/3 bg-rose-700"></div>
           <div className="w-1/3 bg-sky-700"></div>
           <div className="w-1/3 bg-amber-300"></div>
         </div>
 
-        {/* LINHA 1: Logo + Título do App + Título da Página Atual + Botões Painel/Dashboard + Sincronizar + Notificações + Admin/Sair */}
         <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 h-12 flex items-center justify-between gap-2 border-b border-slate-200/80">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="flex items-center cursor-pointer group flex-shrink-0" onClick={resetToFrontPage} title="Voltar ao Início">
@@ -952,12 +949,10 @@ export default function App() {
 
             <span className="text-slate-300 select-none">|</span>
 
-            {/* Título da Página Atual */}
             <span className="text-xs sm:text-sm font-semibold text-sky-800 truncate max-w-[150px] sm:max-w-[320px]" title={getCurrentPageTitle()}>
               {getCurrentPageTitle()}
             </span>
 
-            {/* Botões para os módulos Painel e Dashboard */}
             <div className="flex border border-slate-300 rounded-xs overflow-hidden bg-slate-50 ml-1 flex-shrink-0">
               <button
                 onClick={() => { setCurrentView('list'); setSelectedEntityFicha(null); }}
@@ -977,7 +972,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* Botão Discreto de Sincronizar */}
             {isAdmin && (
               <button
                 onClick={() => confirmAction("Sincronizar Planilha", "Deseja sincronizar com o Google Sheets?", syncWithGoogleSheet)}
@@ -989,9 +983,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Lado Direito da 1ª Linha: Notificações (7 últimas + link para todas) + Admin/Editar */}
           <div className="flex items-center space-x-1.5 flex-shrink-0">
-            {/* Botão e Menu Suspenso de Notificações */}
             <div className="relative">
               <button
                 onClick={handleToggleNotifications}
@@ -1124,10 +1116,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* LINHA 2: Busca Compacta + Filtros de Multiseleção Suavizados + Ordenar Por + Lista/Card + Exportar (CSV/PDF) */}
         {(currentView === 'list' || currentView === 'dashboard' || currentView === 'entity') && (
           <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-1.5 bg-white">
-            {/* Lado Esquerdo: Busca Compacta + Filtros Suaves */}
             <div className="flex flex-wrap items-center gap-1.5 flex-1">
               <div className="relative w-36 sm:w-44">
                 <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -1173,7 +1163,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Lado Direito: Ordenar Por + Alternância Lista/Card + Paginação dos Cards + Exportar CSV/PDF */}
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               <div className="flex items-center border border-slate-200 rounded-xs bg-slate-50/70">
                 <select
@@ -1265,9 +1254,6 @@ export default function App() {
     );
   };
 
-  // ============================================================================
-  // PÁGINA COMPLETA DE HISTÓRICO DE ATUALIZAÇÕES (Todas as modificações guardadas)
-  // ============================================================================
   const UpdatesHistoryView = () => {
     const [histSearch, setHistSearch] = useState('');
     const [histTypeFilter, setHistTypeFilter] = useState('TODOS');
@@ -1336,7 +1322,6 @@ export default function App() {
 
     return (
       <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-4 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        {/* Topo da Página de Histórico */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 print:hidden">
           <div className="flex items-center gap-2">
             <button
@@ -1367,7 +1352,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Cards de Resumo das Atualizações */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <div className="bg-white border border-slate-300 p-3.5 shadow-2xs">
             <p className="text-[10px] font-bold uppercase text-slate-400">Total de Modificações</p>
@@ -1387,7 +1371,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Barra de Filtro e Busca do Histórico */}
         <div className="bg-white border border-slate-300 p-3 mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
           <div className="relative flex-1 min-w-[220px] max-w-md">
             <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -1424,7 +1407,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tabela Completa de Histórico */}
         <div className="bg-white border border-slate-300 overflow-x-auto shadow-xs">
           <table className="min-w-[1000px] w-full border-collapse table-fixed">
             <thead className="bg-amber-200/85 border-b border-slate-400">
@@ -1505,9 +1487,6 @@ export default function App() {
     );
   };
 
-  // ============================================================================
-  // TABELA (NA ÍNTEGRA, TEXTOS POR INTEIRO E OBJETO MAIS LARGO) E CARDS (PAGINADOS)
-  // ============================================================================
   const renderEmendasTableOrCards = (rows, activeSortConfig, onRequestSort, activeViewMode) => {
     const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
       const isActive = activeSortConfig?.key === sortKey;
@@ -1634,7 +1613,12 @@ export default function App() {
                   </td>
 
                   <td className="px-2.5 py-2.5 text-xs print:text-[9px] font-semibold text-sky-800 align-top text-right border-r-0 whitespace-nowrap">
-                    {parseCurrency(emenda.PAGO) > 0 ? formatCurrency(parseCurrency(emenda.PAGO)) : '-'}
+                    <div>{parseCurrency(emenda.PAGO) > 0 ? formatCurrency(parseCurrency(emenda.PAGO)) : '-'}</div>
+                    {emenda['DATA DO PAGAMENTO'] && (
+                      <div className="text-[10px] font-normal text-slate-500 mt-0.5">
+                        {emenda['DATA DO PAGAMENTO']}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1818,6 +1802,11 @@ export default function App() {
                       Pago: {formatCurrency(parseCurrency(emenda.PAGO))}
                     </p>
                   )}
+                  {emenda['DATA DO PAGAMENTO'] && (
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Em {emenda['DATA DO PAGAMENTO']}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1840,9 +1829,6 @@ export default function App() {
     </div>
   );
 
-  // ============================================================================
-  // FICHA INTERATIVA DE CRUZAMENTO DE DADOS
-  // ============================================================================
   const EntityProfileView = () => {
     const [fichaSearch, setFichaSearch] = useState('');
     const [fichaSortConfig, setFichaSortConfig] = useState({ key: 'NÚMERO DA EMENDA', direction: 'desc' });
@@ -2159,9 +2145,6 @@ export default function App() {
     );
   };
 
-  // ============================================================================
-  // DASHBOARD ESTATÍSTICO
-  // ============================================================================
   const DashboardView = () => {
     const [hoveredMuni, setHoveredMuni] = useState(null);
     const [mapMetric, setMapMetric] = useState('valor');
@@ -2686,6 +2669,7 @@ export default function App() {
               <InfoField label="Situação" field="SITUAÇÃO" entityType="situacao" color="red" />
               <InfoField label="Total Previsto" field="TOTAL" color="blue" isCurrency={true} />
               <InfoField label="Valor Pago" field="PAGO" color="blue" isCurrency={true} />
+              <InfoField label="Data do Pagamento (Coluna W)" field="DATA DO PAGAMENTO" icon={ClockIcon} color="blue" />
               <InfoField label="Esfera de Aplicação" field="ESFERA DE APLICAÇÃO" color="black" />
               <InfoField label="Unidade Orçamentária" field="UNIDADE ORÇAMENTÁRIA" entityType="uo" color="black" />
             </div>
@@ -2716,7 +2700,6 @@ export default function App() {
               <InfoField label="Observações Livres" field="Observação" type="textarea" color="black" />
             </div>
 
-            {/* Histórico de Atualizações e Pagamentos desta Emenda */}
             {!isEditing && (
               <div className="col-span-1 md:col-span-2 bg-slate-50/80 border border-slate-200 p-4">
                 <div className="bg-slate-800 text-white font-bold uppercase text-xs py-1 px-2.5 inline-flex items-center gap-1.5 mb-3">
