@@ -44,6 +44,32 @@ const PrinterIcon = (p) => <Icon {...p} path={<><polyline points="6 9 6 2 18 2 1
 const FilterIcon = (p) => <Icon {...p} path={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></>} />;
 const BellIcon = (p) => <Icon {...p} path={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>} />;
 const ClockIcon = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />;
+const BarChartIcon = (p) => <Icon {...p} path={<><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></>} />;
+
+// Mapeamento geográfico público de Santa Catarina (14 regiões -> 295 municípios)
+const SC_REGIOES_GEOGRAFIA = {
+  "ALTO VALE DO ITAJAÍ": ["AGROLANDIA", "AGRONOMICA", "ATALANTA", "AURORA", "BRACO DO TROMBUDO", "CHAPADAO DO LAGEADO", "DONA EMMA", "IBIRAMA", "IMBUIA", "ITUPORANGA", "JOSE BOITEUX", "LAURENTINO", "LONTRAS", "MIRIM DOCE", "PETROLANDIA", "POUSO REDONDO", "PRESIDENTE GETULIO", "PRESIDENTE NEREU", "RIO DO CAMPO", "RIO DO OESTE", "RIO DO SUL", "SALETE", "TAIO", "TROMBUDO CENTRAL", "VIDAL RAMOS", "VITOR MEIRELES", "WITMARSUM"],
+  "EXTREMO-OESTE": ["ANCHIETA", "BANDEIRANTE", "BARRA BONITA", "BELMONTE", "CUNHA PORA", "DESCANSO", "DIONISIO CERQUEIRA", "FLOR DO SERTAO", "GUARACIABA", "GUARUJA DO SUL", "IPORA DO OESTE", "IRACEMINHA", "ITAPIRANGA", "MARAVILHA", "MONDAI", "PALMA SOLA", "PARAISO", "PRINCESA", "RIQUEZA", "ROMELANDIA", "SANTA HELENA", "SAO JOAO DO OESTE", "SAO JOSE DO CEDRO", "SAO MIGUEL DA BOA VISTA", "SAO MIGUEL DO OESTE", "TIGRINHOS", "TUNAPOLIS"],
+  "GRANDE FLORIANÓPOLIS": ["AGUAS MORNAS", "ALFREDO WAGNER", "ANGELINA", "ANITAPOLIS", "ANTONIO CARLOS", "BIGUACU", "CANELINHA", "FLORIANOPOLIS", "GOVERNADOR CELSO RAMOS", "LEOBERTO LEAL", "MAJOR GERCINO", "NOVA TRENTO", "PALHOCA", "PAULO LOPES", "RANCHO QUEIMADO", "SANTO AMARO DA IMPERATRIZ", "SAO BONIFACIO", "SAO JOAO BATISTA", "SAO JOSE", "SAO PEDRO DE ALCANTARA", "TIJUCAS"],
+  "LITORAL DO VALE DO ITAJAÍ": ["BALNEARIO CAMBORIU", "BALNEARIO PICARRAS", "BARRA VELHA", "BOMBINHAS", "CAMBORIU", "ILHOTA", "ITAJAI", "ITAPEMA", "NAVEGANTES", "PENHA", "PORTO BELO", "SAO JOAO DO ITAPERIU"],
+  "MEIO-OESTE I": ["AGUA DOCE", "ALTO BELA VISTA", "ARABUTA", "ARVOREDO", "CAPINZAL", "CATANDUVAS", "CONCORDIA", "ERVAL VELHO", "HERVAL D'OESTE", "IPIRA", "IPUMIRIM", "IRANI", "ITA", "JABORA", "JOACABA", "LACERDOPOLIS", "LINDOIA DO SUL", "LUZERNA", "OURO", "PAIAL", "PERITIBA", "PIRATUBA", "PRESIDENTE CASTELLO BRANCO", "SEARA", "TREZE TILIAS", "VARGEM BONITA", "XAVANTINA"],
+  "MEIO-OESTE II": ["ABDON BATISTA", "ANITA GARIBALDI", "ARROIO TRINTA", "BRUNOPOLIS", "CACADOR", "CALMON", "CAMPOS NOVOS", "CELSO RAMOS", "FRAIBURGO", "IBIAM", "IBICARE", "IOMERE", "LEBON REGIS", "MACIEIRA", "MATOS COSTA", "MONTE CARLO", "PINHEIRO PRETO", "RIO DAS ANTAS", "SALTO VELOSO", "TANGARA", "VARGEM", "VIDEIRA", "ZORTEA"],
+  "NORTE": ["ARAQUARI", "BALNEARIO BARRA DO SUL", "CORUPA", "GARUVA", "GUARAMIRIM", "ITAPOA", "JARAGUA DO SUL", "JOINVILLE", "MASSARANDUBA", "SAO FRANCISCO DO SUL", "SCHROEDER"],
+  "OESTE I": ["AGUAS DE CHAPECO", "AGUAS FRIAS", "CAIBI", "CAXAMBU DO SUL", "CHAPECO", "CORDILHEIRA ALTA", "CORONEL FREITAS", "CUNHATAI", "FAXINAL DOS GUEDES", "GUATAMBU", "LAJEADO GRANDE", "MAREMA", "MODELO", "NOVA ERECHIM", "NOVA ITABERABA", "PALMITOS", "PASSOS MAIA", "PINHALZINHO", "PLANALTO ALEGRE", "PONTE SERRADA", "SAO CARLOS", "SAUDADES", "SERRA ALTA", "SUL BRASIL", "VARGEAO", "XANXERE", "XAXIM"],
+  "OESTE II": ["ABELARDO LUZ", "BOM JESUS", "BOM JESUS DO OESTE", "CAMPO ERE", "CORONEL MARTINS", "ENTRE RIOS", "FORMOSA DO SUL", "GALVAO", "IPUACU", "IRATI", "JARDINOPOLIS", "JUPIA", "NOVO HORIZONTE", "OURO VERDE", "QUILOMBO", "SALTINHO", "SANTA TEREZINHA DO PROGRESSO", "SANTIAGO DO SUL", "SAO BERNARDINO", "SAO DOMINGOS", "SAO LOURENCO DO OESTE", "UNIAO DO OESTE"],
+  "PLANALTO NORTE": ["BELA VISTA DO TOLDO", "CAMPO ALEGRE", "CANOINHAS", "IRINEOPOLIS", "ITAIOPOLIS", "MAFRA", "MAJOR VIEIRA", "MONTE CASTELO", "PAPANDUVA", "PORTO UNIAO", "RIO NEGRINHO", "SANTA TEREZINHA", "SAO BENTO DO SUL", "TIMBO GRANDE", "TRES BARRAS"],
+  "SERRANA": ["BOCAINA DO SUL", "BOM JARDIM DA SERRA", "BOM RETIRO", "CAMPO BELO DO SUL", "CAPAO ALTO", "CERRO NEGRO", "CORREIA PINTO", "CURITIBANOS", "FREI ROGERIO", "LAGES", "OTACILIO COSTA", "PAINEL", "PALMEIRA", "PONTE ALTA", "PONTE ALTA DO NORTE", "RIO RUFINO", "SANTA CECILIA", "SAO CRISTOVAO DO SUL", "SAO JOAQUIM", "SAO JOSE DO CERRITO", "URUBICI", "URUPEMA"],
+  "SUL I": ["ARARANGUA", "BALNEARIO ARROIO DO SILVA", "BALNEARIO GAIVOTA", "BALNEARIO RINCAO", "COCAL DO SUL", "CRICIUMA", "ERMO", "FORQUILHINHA", "ICARA", "JACINTO MACHADO", "LAURO MULLER", "MARACAJA", "MELEIRO", "MORRO DA FUMACA", "MORRO GRANDE", "NOVA VENEZA", "PASSO DE TORRES", "PRAIA GRANDE", "SANTA ROSA DO SUL", "SAO JOAO DO SUL", "SIDEROPOLIS", "SOMBRIO", "TIMBE DO SUL", "TREVISO", "TURVO", "URUSSANGA"],
+  "SUL II": ["ARMAZEM", "BRACO DO NORTE", "CAPIVARI DE BAIXO", "GAROPABA", "GRAO PARA", "GRAVATAL", "IMARUI", "IMBITUBA", "JAGUARUNA", "LAGUNA", "ORLEANS", "PEDRAS GRANDES", "PESCARIA BRAVA", "RIO FORTUNA", "SANGAO", "SANTA ROSA DE LIMA", "SAO LUDGERO", "SAO MARTINHO", "TREZE DE MAIO", "TUBARAO"],
+  "VALE DO ITAJAÍ": ["APIUNA", "ASCURRA", "BENEDITO NOVO", "BLUMENAU", "BOTUVERA", "BRUSQUE", "DOUTOR PEDRINHO", "GASPAR", "GUABIRUBA", "INDAIAL", "LUIZ ALVES", "POMERODE", "RIO DOS CEDROS", "RODEIO", "TIMBO"]
+};
+
+const MUNICIPIO_PARA_REGIAO = {};
+Object.entries(SC_REGIOES_GEOGRAFIA).forEach(([regiao, listaMun]) => {
+  listaMun.forEach(m => {
+    MUNICIPIO_PARA_REGIAO[m] = regiao;
+  });
+});
 
 function parseCSV(text) {
   const csvText = text.replace(/^\uFEFF/, '');
@@ -105,6 +131,16 @@ function getModalidade(emenda) {
     return 'Convênio';
   }
   return String(emenda['ESFERA DE APLICAÇÃO'] || '').trim();
+}
+
+function getRegiao(emenda) {
+  if (!emenda) return '';
+  if (emenda.REGIÃO && String(emenda.REGIÃO).trim() !== '') {
+    return String(emenda.REGIÃO).trim();
+  }
+  const munNorm = normalizeStr(emenda['MUNICÍPIO']);
+  if (munNorm === 'ESTADUAL') return 'ESTADUAL';
+  return MUNICIPIO_PARA_REGIAO[munNorm] || '';
 }
 
 function formatDateBr(val) {
@@ -375,6 +411,7 @@ export default function App() {
   const normalizedEmendas = useMemo(() => {
     return emendas.map(e => ({
       ...e,
+      REGIÃO: getRegiao(e),
       MODALIDADE: getModalidade(e),
       ANO: e.ANO ? String(e.ANO).trim() : (String(e['NÚMERO DA EMENDA'] || '').split('/')[1] || '').trim(),
       'DATA DO PAGAMENTO': getDataPagamento(e, updateHistory)
@@ -383,7 +420,7 @@ export default function App() {
 
   const articuladores = useMemo(() => [...new Set(normalizedEmendas.map(e => e.ARTICULADOR).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const municipios = useMemo(() => [...new Set(normalizedEmendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
-  const regioes = useMemo(() => [...new Set(normalizedEmendas.map(e => e.REGIÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
+  const regioes = useMemo(() => [...new Set([...Object.keys(SC_REGIOES_GEOGRAFIA), ...normalizedEmendas.map(e => e.REGIÃO).filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const modalidades = useMemo(() => [...new Set(normalizedEmendas.map(e => e.MODALIDADE).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const entidades = useMemo(() => [...new Set(normalizedEmendas.map(e => e['RAZÃO SOCIAL']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const temas = useMemo(() => [...new Set(normalizedEmendas.map(e => e.TEMA).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
@@ -956,6 +993,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // BARRA SUPERIOR ÚNICA E FIXA
+  // ============================================================================
   const UnifiedTopBar = () => {
     const activeFilterCount =
       filterArticuladores.length +
@@ -1304,6 +1344,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // PÁGINA COMPLETA DE HISTÓRICO DE ATUALIZAÇÕES
+  // ============================================================================
   const UpdatesHistoryView = () => {
     const [histSearch, setHistSearch] = useState('');
     const [histTypeFilter, setHistTypeFilter] = useState('TODOS');
@@ -1537,6 +1580,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // TABELA E CARDS
+  // ============================================================================
   const renderEmendasTableOrCards = (rows, activeSortConfig, onRequestSort, activeViewMode) => {
     const SortableHeader = ({ label, sortKey, extraClasses = "" }) => {
       const isActive = activeSortConfig?.key === sortKey;
@@ -1879,6 +1925,9 @@ export default function App() {
     </div>
   );
 
+  // ============================================================================
+  // FICHA INTERATIVA DE CRUZAMENTO DE DADOS
+  // ============================================================================
   const EntityProfileView = () => {
     const [fichaSearch, setFichaSearch] = useState('');
     const [fichaSortConfig, setFichaSortConfig] = useState({ key: 'NÚMERO DA EMENDA', direction: 'desc' });
@@ -2196,6 +2245,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // DASHBOARD ESTATÍSTICO
+  // ============================================================================
   const DashboardView = () => {
     const [hoveredMuni, setHoveredMuni] = useState(null);
     const [mapMetric, setMapMetric] = useState('valor');
