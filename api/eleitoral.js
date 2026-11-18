@@ -4,15 +4,19 @@
 // enxuto para o app. NADA sensível fica no código: o ID da planilha e as
 // credenciais vêm de variáveis de ambiente (Vercel > Settings > Environment Variables).
 //
-// Variáveis (veja LEIA-ME_ELEITORAL.md):
+// Variáveis (veja LEIA-ME_ELEITORAL.md). A fonte é escolhida nesta ordem:
+//
+//   1) Apps Script (mesmo padrão do api/emendas.js; a planilha não precisa ser publicada)
+//   ELEITORAL_SCRIPT_URL             URL da implantação (Web app) do script da planilha de votação
+//   ELEITORAL_SCRIPT_TOKEN           mesmo valor de SHARED_SECRET configurado no script
+//
+//   2) Conta de serviço do Google (planilha PRIVADA, compartilhada só com a conta)
 //   ELEITORAL_SHEET_ID               ID da planilha de votos (trecho entre /d/ e /edit na URL)
 //   ELEITORAL_SHEET_TAB              (opcional) nome da aba. Padrão: "Municípios"
-//
-//   Modo recomendado (planilha continua PRIVADA, compartilhada só com a conta de serviço):
 //   GOOGLE_SERVICE_ACCOUNT_EMAIL     e-mail da conta de serviço
 //   GOOGLE_PRIVATE_KEY               chave privada da conta de serviço (com \n)
 //
-//   Modo simples (alternativa): link CSV da aba, que fica só no servidor
+//   3) Link CSV publicado da aba (alternativa simples; quem tiver o link lê a aba)
 //   ELEITORAL_CSV_URL
 //
 // Se o seu api/emendas.js usa `module.exports`, troque a última linha e o
@@ -20,6 +24,8 @@
 
 import crypto from 'node:crypto';
 
+const SCRIPT_URL = process.env.ELEITORAL_SCRIPT_URL;
+const SCRIPT_TOKEN = process.env.ELEITORAL_SCRIPT_TOKEN;
 const SHEET_ID = process.env.ELEITORAL_SHEET_ID;
 const TAB = process.env.ELEITORAL_SHEET_TAB || 'Municípios';
 const SA_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -69,6 +75,26 @@ async function getAccessToken() {
 }
 
 /* ---------- leitura da planilha ---------- */
+// Chama o Apps Script da planilha de votação (POST + token, como o api/emendas.js).
+// O token fica só aqui no servidor; o navegador nunca o vê.
+async function lerViaScript() {
+  const resp = await fetch(SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'eleicoes', token: SCRIPT_TOKEN }),
+    redirect: 'follow',
+  });
+  if (!resp.ok) throw new Error(`script_http_${resp.status}`);
+  const texto = await resp.text();
+  let json;
+  try { json = JSON.parse(texto); } catch (e) { throw new Error('script_resposta_invalida'); }
+  if (json.status !== 'sucesso') {
+    throw new Error(/negado/i.test(String(json.mensagem || '')) ? 'script_negado' : 'script_erro');
+  }
+  if (!Array.isArray(json.cabecalho) || !Array.isArray(json.linhas)) throw new Error('script_resposta_invalida');
+  return [json.cabecalho, ...json.linhas];
+}
+
 async function lerViaApiSheets() {
   const token = await getAccessToken();
   const range = encodeURIComponent(TAB);
@@ -182,16 +208,17 @@ export default async function handler(req, res) {
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
+  const modoScript = Boolean(SCRIPT_URL && SCRIPT_TOKEN);
   const modoApi = Boolean(SHEET_ID && SA_EMAIL && SA_KEY);
   const modoCsv = Boolean(CSV_URL);
-  if (!modoApi && !modoCsv) {
+  if (!modoScript && !modoApi && !modoCsv) {
     return res.status(503).json({
       erro: 'Fonte eleitoral não configurada no servidor (variáveis de ambiente ausentes).',
     });
   }
 
   try {
-    const rows = modoApi ? await lerViaApiSheets() : await lerViaCsv();
+    const rows = modoScript ? await lerViaScript() : modoApi ? await lerViaApiSheets() : await lerViaCsv();
     const payload = montarPayload(rows);
     // Cache de borda: a planilha só muda quando a equipe atualiza.
     res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
@@ -200,7 +227,13 @@ export default async function handler(req, res) {
     // Detalhe só no log do servidor; o cliente recebe uma mensagem genérica.
     console.error('[eleitoral] falha:', e && e.message);
     const codigo = String((e && e.message) || 'erro');
-    const dica = /sheets_403|sheets_404/.test(codigo)
+    const dica = /script_negado/.test(codigo)
+      ? 'O script recusou o token (ELEITORAL_SCRIPT_TOKEN precisa ser igual ao SHARED_SECRET do script).'
+      : /script_resposta_invalida|script_http_/.test(codigo)
+      ? 'Resposta inesperada do script (confira a URL da implantação e se o acesso é "Qualquer pessoa").'
+      : /script_erro/.test(codigo)
+      ? 'O script não conseguiu ler a aba Municípios.'
+      : /sheets_403|sheets_404/.test(codigo)
       ? 'Sem acesso à planilha (confira se ela foi compartilhada com a conta de serviço).'
       : /auth_/.test(codigo)
       ? 'Falha de autenticação da conta de serviço.'
