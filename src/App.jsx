@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus, VotosEvolucao, textoEvolucaoMunicipio } from 'src/eleitoral.jsx';
+import { useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus, VotosEvolucao, textoEvolucaoMunicipio } from './eleitoral.jsx';
 
 const Icon = ({ path, className = "w-4 h-4", onClick, size, style }) => (
   <svg
