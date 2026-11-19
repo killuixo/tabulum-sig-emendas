@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useContext, useRef, createContext } from 'react';
 
 /* ==========================================================================
    TABULUM — Módulo Eleitoral
@@ -6,6 +6,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
    ========================================================================== */
 
 const CACHE_KEY = 'tabulum_eleitoral_cache_v1';
+
+// Quando true (durante a impressão/PDF), as tabelas mostram TODAS as linhas filtradas.
+const ImpressaoCtx = createContext(false);
 
 /* ------------------------------ helpers ---------------------------------- */
 function norm(s) {
@@ -194,8 +197,20 @@ function regiaoPorMunicipio(emendas, eleitoral) {
   return out;
 }
 
-export function analisar({ eleitoral, emendas, baseKey, compKey, anos, modalidades, pVotos = 50, pEmenda = 50 }) {
-  const regiaoMap = regiaoPorMunicipio(emendas, eleitoral);
+export function correlacoes(rows) {
+  const setA = rows.filter((r) => r.vComp > 0);
+  const setB = rows.filter((r) => r.vBase > 0 && r.vComp > 0);
+  return {
+    votos: spearman(setA.map((r) => r.total), setA.map((r) => r.vComp)),
+    nA: setA.length,
+    delta: spearman(setB.map((r) => r.total), setB.map((r) => r.delta)),
+    nB: setB.length,
+  };
+}
+
+export function analisar({ eleitoral, emendas, emendasParaRegiao, baseKey, compKey, anos, modalidades, pVotos = 50, pEmenda = 50 }) {
+  // a região de cada município vem de TODAS as emendas, mesmo quando o usuário filtra as emendas
+  const regiaoMap = regiaoPorMunicipio(emendasParaRegiao || emendas, eleitoral);
   const agg = new Map();
   const semMun = { qtd: 0, total: 0, pago: 0 };
   const porAnoGeral = {};
@@ -212,14 +227,17 @@ export function analisar({ eleitoral, emendas, baseKey, compKey, anos, modalidad
       return;
     }
     let a = agg.get(mNorm);
-    if (!a) { a = { nome: String(e['MUNICÍPIO']).trim(), qtd: 0, total: 0, pago: 0 }; agg.set(mNorm, a); }
+    if (!a) { a = { nome: String(e['MUNICÍPIO']).trim(), qtd: 0, total: 0, pago: 0, porAno: {} }; agg.set(mNorm, a); }
     a.qtd++; a.total += total; a.pago += pago;
+    const pa = a.porAno[ano] || (a.porAno[ano] = { qtd: 0, total: 0, pago: 0 });
+    pa.qtd++; pa.total += total; pa.pago += pago;
     const g = porAnoGeral[ano] || (porAnoGeral[ano] = { qtd: 0, total: 0, pago: 0 });
     g.qtd++; g.total += total; g.pago += pago;
   });
 
   const keys = new Set([...eleitoral.porNorm.keys(), ...agg.keys()]);
   const rows = [];
+  const todas = [];
   keys.forEach((k) => {
     const m = eleitoral.porNorm.get(k);
     const a = agg.get(k);
@@ -227,11 +245,12 @@ export function analisar({ eleitoral, emendas, baseKey, compKey, anos, modalidad
     const xc = m && m.v[compKey];
     const vBase = xb ? xb.votos || 0 : 0;
     const vComp = xc ? xc.votos || 0 : 0;
-    if (!a && vBase === 0 && vComp === 0) return;
     const cComp = xc ? xc.comp || 0 : 0;
     const total = a ? a.total : 0;
-    rows.push({
+    const row = {
       norm: k,
+      v: m ? m.v : {},
+      porAno: a ? a.porAno : {},
       nome: a ? a.nome : titulo(m.nome),
       regiao: regiaoMap.get(k) || '',
       temVotos: Boolean(m),
@@ -247,27 +266,22 @@ export function analisar({ eleitoral, emendas, baseKey, compKey, anos, modalidad
       pago: a ? a.pago : 0,
       rsPorVoto: vComp > 0 && total > 0 ? total / vComp : null,
       votosPor100k: total > 0 ? vComp / (total / 1e5) : null,
-    });
+    };
+    todas.push(row);
+    if (a || vBase > 0 || vComp > 0) rows.push(row);
   });
 
   const cortes = {
     votos: percentile(rows.filter((r) => r.vComp > 0).map((r) => r.vComp), pVotos),
     emenda: percentile(rows.filter((r) => r.total > 0).map((r) => r.total), pEmenda),
   };
-  rows.forEach((r) => {
+  todas.forEach((r) => {
     const altoV = r.vComp > 0 && r.vComp >= cortes.votos;
     const altoE = r.total > 0 && r.total >= cortes.emenda;
     r.classe = altoV && altoE ? 'atendida' : altoV ? 'fortalecer' : altoE ? 'converter' : 'baixa';
   });
 
-  const setA = rows.filter((r) => r.vComp > 0);
-  const setB = rows.filter((r) => r.vBase > 0 && r.vComp > 0);
-  const corr = {
-    votos: spearman(setA.map((r) => r.total), setA.map((r) => r.vComp)),
-    nA: setA.length,
-    delta: spearman(setB.map((r) => r.total), setB.map((r) => r.delta)),
-    nB: setB.length,
-  };
+  const corr = correlacoes(rows);
 
   const totalComp = (eleitoral.totais[compKey] || {}).votos || 0;
   const votosEmContemplados = rows.filter((r) => r.total > 0).reduce((s, r) => s + r.vComp, 0);
@@ -277,7 +291,7 @@ export function analisar({ eleitoral, emendas, baseKey, compKey, anos, modalidad
     .sort((x, y) => y.total - x.total);
 
   return {
-    rows, cortes, corr, semMun, porAnoGeral, naoCasadas,
+    rows, todas, cortes, corr, semMun, porAnoGeral, naoCasadas,
     cobertura: totalComp > 0 ? (votosEmContemplados / totalComp) * 100 : null,
     contemplados: rows.filter((r) => r.total > 0).length,
     totalMunicipal: rows.reduce((s, r) => s + r.total, 0),
@@ -323,7 +337,8 @@ const Card = ({ title, right, children, className = '' }) => (
   </div>
 );
 
-function DataTable({ columns, rows, initialSort, onRowClick, pageSize = 100, empty = 'Sem dados.' }) {
+function DataTable({ columns, rows, initialSort, onRowClick, pageSize = 100, empty = 'Sem dados.', footer }) {
+  const imprimindo = useContext(ImpressaoCtx);
   const [sort, setSort] = useState(initialSort || { key: columns[0].key, dir: 'desc' });
   const [limit, setLimit] = useState(pageSize);
   useEffect(() => { setLimit(pageSize); }, [rows, pageSize]);
@@ -351,12 +366,13 @@ function DataTable({ columns, rows, initialSort, onRowClick, pageSize = 100, emp
   const al = (a) => (a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left');
 
   if (!rows.length) return <p className="p-4 text-xs text-slate-400 uppercase">{empty}</p>;
+  const visiveis = imprimindo ? sorted : sorted.slice(0, limit);
 
   return (
     <div>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-xs">
-          <thead className="bg-slate-50 sticky top-0 z-10">
+      <div className="overflow-x-auto print:overflow-visible">
+        <table className="w-full border-collapse text-xs print:text-[9px]">
+          <thead className="bg-slate-50 sticky top-0 z-10 print:static">
             <tr>
               {columns.map((c) => (
                 <th
@@ -372,7 +388,7 @@ function DataTable({ columns, rows, initialSort, onRowClick, pageSize = 100, emp
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sorted.slice(0, limit).map((r, i) => (
+            {visiveis.map((r, i) => (
               <tr
                 key={r.norm || r.key || i}
                 onClick={onRowClick ? () => onRowClick(r) : undefined}
@@ -386,10 +402,21 @@ function DataTable({ columns, rows, initialSort, onRowClick, pageSize = 100, emp
               </tr>
             ))}
           </tbody>
+          {footer && (
+            <tfoot className="bg-slate-100 border-t-2 border-slate-400">
+              <tr>
+                {columns.map((c) => (
+                  <td key={c.key} className={`py-1.5 px-2 text-[11px] font-bold text-slate-900 whitespace-nowrap ${al(c.align)}`}>
+                    {footer[c.key] === undefined ? '' : footer[c.key]}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
-      {sorted.length > limit && (
-        <div className="p-2 text-center border-t border-slate-200">
+      {!imprimindo && sorted.length > limit && (
+        <div className="p-2 text-center border-t border-slate-200 print:hidden">
           <button
             onClick={() => setLimit((l) => l + pageSize)}
             className="px-3 py-1 text-xs font-semibold border border-slate-300 bg-white hover:bg-amber-100"
@@ -539,7 +566,7 @@ function quantis(vals, k = 5) {
 }
 const faixa = (v, cuts) => cuts.filter((c) => v >= c).length;
 
-function MapaEleitoral({ rows, mapGeoJson, onOpen }) {
+function MapaEleitoral({ rows, mapGeoJson, onOpen, foraDoFiltro }) {
   const [metrica, setMetrica] = useState('votos');
   const [hover, setHover] = useState(null);
 
@@ -624,7 +651,7 @@ function MapaEleitoral({ rows, mapGeoJson, onOpen }) {
               const r = porNorm.get(f.n);
               return (
                 <path
-                  key={i} d={f.d} fill={cor(r)} stroke="#334155" strokeWidth="0.6"
+                  key={i} d={f.d} fill={r ? cor(r) : (foraDoFiltro && foraDoFiltro.has(f.n) ? '#e2e8f0' : '#ffffff')} stroke="#334155" strokeWidth="0.6"
                   className="hover:stroke-[2px] cursor-pointer"
                   onMouseEnter={(e) => setHover({ r: r || { nome: titulo(f.nome), regiao: '', vComp: 0, vBase: 0, delta: 0, deltaPct: null, qtd: 0, total: 0, rsPorVoto: null, classe: 'baixa' }, x: e.clientX, y: e.clientY })}
                   onMouseMove={(e) => setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h))}
@@ -648,6 +675,12 @@ function MapaEleitoral({ rows, mapGeoJson, onOpen }) {
               <span className="w-4 h-4 border border-slate-400 bg-white flex-shrink-0" />
               <span className="text-slate-500">Sem registro</span>
             </div>
+            {foraDoFiltro && foraDoFiltro.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 border border-slate-400 flex-shrink-0" style={{ background: '#e2e8f0' }} />
+                <span className="text-slate-500">Fora dos filtros</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -656,7 +689,176 @@ function MapaEleitoral({ rows, mapGeoJson, onOpen }) {
   );
 }
 
-/* --------------------------- barra de controles -------------------------- */
+/* ------------------------ evolução de votos (sparkline) ------------------- */
+// Série principal = eleições do mesmo cargo da eleição mais recente (deputado estadual),
+// que são comparáveis entre si. Eleições de outros cargos (vereador/prefeito, só em
+// Florianópolis) entram como pontos vazados, sem ligar a linha.
+export function serieEvolucao(eleitoral, v) {
+  const els = eleitoral.eleicoes;
+  if (!els.length) return null;
+  const deps = els.filter((e) => e.deputado);
+  const ref = deps.length ? deps : els;
+  const cargo = ref[ref.length - 1].cargo;
+  const pontos = els
+    .filter((e) => e.cargo === cargo || v[e.key])
+    .map((e) => ({ e, votos: v[e.key] ? v[e.key].votos || 0 : 0, principal: e.cargo === cargo, registro: Boolean(v[e.key]) }));
+  const pr = pontos.filter((p) => p.principal);
+  const primeiro = pr[0];
+  const ultimo = pr[pr.length - 1];
+  const delta = ultimo.votos - primeiro.votos;
+  return {
+    pontos, primeiro, ultimo, delta, cargo,
+    pct: primeiro.votos > 0 ? (delta / primeiro.votos) * 100 : null,
+    novo: primeiro.votos === 0 && ultimo.votos > 0,
+    sem: pontos.every((p) => p.votos === 0),
+  };
+}
+
+export function textoEvolucao(serie) {
+  if (!serie || serie.sem) return '';
+  return serie.pontos.map((p) => `${p.e.label}: ${p.votos}`).join(' | ');
+}
+
+function Sparkline({ serie, w = 88, h = 28 }) {
+  const pad = 4;
+  const n = serie.pontos.length;
+  const max = Math.max(1, ...serie.pontos.map((p) => p.votos));
+  const x = (i) => (n === 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (n - 1));
+  const y = (v) => h - pad - (v / max) * (h - 2 * pad);
+  const cor = serie.delta > 0 ? '#0369a1' : serie.delta < 0 ? '#be123c' : '#64748b';
+  const pts = serie.pontos.map((p, i) => ({ ...p, px: x(i), py: y(p.votos) }));
+  const linha = pts.filter((p) => p.principal).map((p) => `${p.px},${p.py}`).join(' ');
+  const titulo = serie.pontos
+    .map((p) => `${p.e.label}: ${nf0.format(p.votos)} votos${p.principal ? '' : ' (outro cargo)'}`)
+    .join('\n');
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="flex-shrink-0 overflow-visible">
+      <title>{titulo}</title>
+      <line x1={pad} x2={w - pad} y1={h - pad} y2={h - pad} stroke="#e2e8f0" />
+      {linha.includes(' ') && <polyline points={linha} fill="none" stroke={cor} strokeWidth="1.6" strokeLinejoin="round" />}
+      {pts.map((p, i) => (
+        p.principal
+          ? <circle key={i} cx={p.px} cy={p.py} r={i === pts.length - 1 ? 3.2 : 2.3} fill={cor} />
+          : <circle key={i} cx={p.px} cy={p.py} r="2.6" fill="#fff" stroke="#f59e0b" strokeWidth="1.5" />
+      ))}
+    </svg>
+  );
+}
+
+const cacheSerie = new WeakMap();
+function serieDoMunicipio(eleitoral, m) {
+  let c = cacheSerie.get(eleitoral);
+  if (!c) { c = new Map(); cacheSerie.set(eleitoral, c); }
+  if (!c.has(m.norm)) c.set(m.norm, serieEvolucao(eleitoral, m.v));
+  return c.get(m.norm);
+}
+
+// Texto da evolução para exportação (ex.: CSV do painel de emendas)
+export function textoEvolucaoMunicipio(eleitoral, municipio) {
+  if (!eleitoral) return '';
+  const m = eleitoral.porNorm.get(norm(municipio));
+  return m ? textoEvolucao(serieDoMunicipio(eleitoral, m)) : '';
+}
+
+export function VotosEvolucao({ eleitoral, municipio, onClick }) {
+  if (!eleitoral) return null;
+  const m = eleitoral.porNorm.get(norm(municipio));
+  if (!m) return <span className="text-slate-300 text-xs" title="Sem votos registrados neste município">—</span>;
+  const s = serieDoMunicipio(eleitoral, m);
+  if (!s || s.sem) return <span className="text-slate-300 text-xs">—</span>;
+  const rotulo = `${s.cargo}: ${s.primeiro.e.ano} → ${s.ultimo.e.ano}`;
+  return (
+    <div className="flex items-center gap-1.5" title={`${rotulo}\nClique para abrir a ficha do município`} onClick={onClick}>
+      <Sparkline serie={s} />
+      <div className="leading-tight">
+        <div className="text-[10px] font-bold text-slate-800 whitespace-nowrap">{fmtInt(s.primeiro.votos)} → {fmtInt(s.ultimo.votos)}</div>
+        <div className="text-[10px] font-semibold">
+          {s.novo ? <span className="text-sky-700">novo</span>
+            : s.pct !== null ? <span className={s.pct >= 0 ? 'text-sky-700' : 'text-rose-700'}>{fmtSignedPct(s.pct)}</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- PNG de gráficos/mapas ----------------------- */
+function baixarSvgPng(container, nome) {
+  const svg = container && container.querySelector('svg');
+  if (!svg) return;
+  const vb = svg.viewBox && svg.viewBox.baseVal;
+  const w = (vb && vb.width) || 800;
+  const h = (vb && vb.height) || 600;
+  const clone = svg.cloneNode(true);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('width', w);
+  clone.setAttribute('height', h);
+  const fundo = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  fundo.setAttribute('width', '100%'); fundo.setAttribute('height', '100%'); fundo.setAttribute('fill', '#ffffff');
+  clone.insertBefore(fundo, clone.firstChild);
+  const xml = new XMLSerializer().serializeToString(clone);
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    const esc = 2;
+    c.width = w * esc; c.height = h * esc;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    c.toBlob((b) => {
+      if (!b) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b); a.download = nome;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    });
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+}
+
+/* ------------------------------ filtros ---------------------------------- */
+function MultiFiltro({ label, opcoes, valor, onChange, vazioTexto = 'Todos', largura = 'w-64' }) {
+  const [aberto, setAberto] = useState(false);
+  const [q, setQ] = useState('');
+  const sel = valor || [];
+  const lista = opcoes.filter((o) => !q || norm(o).includes(norm(q)));
+  const resumo = sel.length === 0 ? vazioTexto : sel.length === 1 ? sel[0] : `${sel.length} selecionados`;
+  const alternar = (o) => onChange(sel.includes(o) ? sel.filter((x) => x !== o) : [...sel, o]);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setAberto((a) => !a)}
+        className={`flex flex-col items-start border px-2 py-1 min-w-[120px] max-w-[200px] text-left hover:bg-slate-50 ${sel.length ? 'border-sky-700 bg-sky-50' : 'border-slate-300 bg-white'}`}
+      >
+        <span className="text-[10px] font-bold uppercase text-slate-500">{label}</span>
+        <span className="text-xs font-medium text-slate-800 truncate w-full">{resumo} ▾</span>
+      </button>
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setAberto(false)} />
+          <div className={`absolute z-50 mt-1 bg-white border border-slate-400 shadow-lg ${largura}`}>
+            {opcoes.length > 8 && (
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar..." className="w-full border-b border-slate-200 px-2 py-1.5 text-xs focus:outline-none" />
+            )}
+            <div className="max-h-64 overflow-y-auto">
+              {lista.map((o) => (
+                <label key={o} className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-amber-50 cursor-pointer">
+                  <input type="checkbox" checked={sel.includes(o)} onChange={() => alternar(o)} />
+                  <span className="truncate">{o}</span>
+                </label>
+              ))}
+              {!lista.length && <p className="px-2 py-2 text-xs text-slate-400">Nada encontrado</p>}
+            </div>
+            <div className="flex justify-between border-t border-slate-200 px-2 py-1">
+              <button onClick={() => onChange([])} className="text-[11px] text-sky-700 font-semibold hover:underline">Limpar</button>
+              <button onClick={() => setAberto(false)} className="text-[11px] font-semibold text-slate-600 hover:underline">Fechar</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const Chip = ({ ativo, onClick, children }) => (
   <button
     onClick={onClick}
@@ -666,54 +868,193 @@ const Chip = ({ ativo, onClick, children }) => (
   </button>
 );
 
-const Seletor = ({ label, value, onChange, options }) => (
-  <label className="flex flex-col text-[10px] font-bold uppercase text-slate-500">
+const Seletor = ({ label, value, onChange, options, className = '' }) => (
+  <label className={`flex flex-col text-[10px] font-bold uppercase text-slate-500 ${className}`}>
     {label}
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="mt-0.5 border border-slate-300 bg-white text-xs font-medium text-slate-800 normal-case px-2 py-1 focus:outline-none focus:border-sky-700"
+      className="mt-0.5 border border-slate-300 bg-white text-xs font-medium text-slate-800 normal-case px-1.5 py-[3px] focus:outline-none focus:border-sky-700"
     >
       {options.map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
     </select>
   </label>
 );
 
-const OPCOES_CORTE = [['50', 'Mediana (50%)'], ['67', 'Terço superior (67%)'], ['75', 'Quartil superior (75%)']];
+const OPCOES_CORTE = [['50', '50% (metade)'], ['67', '33% (um terço)'], ['75', '25% (um quarto)']];
+const FILTROS_VAZIOS = {
+  busca: '', regioes: [], classes: [], emenda: 'todos', votos: 'todos',
+  anos: [], mods: null, articuladores: [], temas: [], situacoes: [],
+};
+const vf = (v) => String(v === null || v === undefined ? '' : v).trim() || '(não informado)';
+const unicos = (arr, ordem) => [...new Set(arr)].sort(ordem || ((a, b) => a.localeCompare(b, 'pt-BR')));
+const dinheiroCsv = (n) => (n || 0).toFixed(2).replace('.', ',');
 
 /* ------------------------- módulo: Inteligência Eleitoral ---------------- */
 export function EleitoralModule({ eleitoral, status, erro, recarregar, emendas, mapGeoJson, openEntityFicha, exportRows }) {
   const padrao = useMemo(() => (eleitoral ? chavesPadrao(eleitoral) : { baseKey: '', compKey: '' }), [eleitoral]);
   const [baseKey, setBaseKey] = useState('');
   const [compKey, setCompKey] = useState('');
-  const [anosSel, setAnosSel] = useState(null);
-  const [modSel, setModSel] = useState(null);
+  const [fil, setFil] = useState(FILTROS_VAZIOS);
   const [pVotos, setPVotos] = useState('50');
   const [pEmenda, setPEmenda] = useState('50');
-  const [aba, setAba] = useState('geral');
+  const [aba, setAba] = useState('lista');
+  const [detalheComp, setDetalheComp] = useState(false);
+  const [emendasAno, setEmendasAno] = useState(false);
+  const [imprimindo, setImprimindo] = useState(false);
+  const mapaRef = useRef(null);
+  const matrizRef = useRef(null);
 
-  const anosDisp = useMemo(() => [...new Set((emendas || []).map((e) => String(e.ANO || '').trim()).filter(Boolean))].sort(), [emendas]);
-  const modsDisp = useMemo(() => [...new Set((emendas || []).map((e) => e.MODALIDADE).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [emendas]);
+  const setF = (parcial) => setFil((f) => ({ ...f, ...parcial }));
+  // Ao escolher ano/articulador/tema/situação, a lista passa a mostrar só os municípios que
+  // têm essas emendas (o seletor "Emendas no município" muda junto e pode ser revertido).
+  const setFEmenda = (parcial) =>
+    setFil((f) => ({ ...f, ...parcial, ...(f.emenda === 'todos' && Object.values(parcial).some((v) => Array.isArray(v) && v.length) ? { emenda: 'com' } : {}) }));
+
+  // PDF = impressão do navegador, com todas as linhas e sem a barra de filtros
+  useEffect(() => {
+    if (!imprimindo) return undefined;
+    const fim = () => setImprimindo(false);
+    window.addEventListener('afterprint', fim);
+    const t = setTimeout(() => window.print(), 350);
+    const seguranca = setTimeout(fim, 120000);
+    return () => { clearTimeout(t); clearTimeout(seguranca); window.removeEventListener('afterprint', fim); };
+  }, [imprimindo]);
+
+  const opc = useMemo(() => {
+    const lista = emendas || [];
+    return {
+      anos: unicos(lista.map((e) => vf(e.ANO)), (a, b) => a.localeCompare(b)),
+      mods: unicos(lista.map((e) => vf(e.MODALIDADE))),
+      arts: unicos(lista.map((e) => vf(e.ARTICULADOR))),
+      temas: unicos(lista.map((e) => vf(e.TEMA))),
+      sits: unicos(lista.map((e) => vf(e['SITUAÇÃO']))),
+    };
+  }, [emendas]);
+
+  const modsPadrao = useMemo(() => opc.mods.filter((m) => !/execu[cç][aã]o direta/i.test(m)), [opc.mods]);
+  const mods = fil.mods === null ? modsPadrao : fil.mods;
+  const passa = (lista, v) => !lista.length || lista.includes(vf(v));
+
+  const emendasFiltradas = useMemo(
+    () => (emendas || []).filter((e) =>
+      passa(fil.anos, e.ANO) && passa(mods, e.MODALIDADE) && passa(fil.articuladores, e.ARTICULADOR) &&
+      passa(fil.temas, e.TEMA) && passa(fil.situacoes, e['SITUAÇÃO'])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [emendas, fil.anos, mods, fil.articuladores, fil.temas, fil.situacoes]
+  );
 
   const base = baseKey || padrao.baseKey;
   const comp = compKey || padrao.compKey;
-  const anos = anosSel || anosDisp;
-  const mods = modSel || modsDisp.filter((m) => !/execu[cç][aã]o direta/i.test(m));
 
   const A = useMemo(
     () => (eleitoral && base && comp
-      ? analisar({ eleitoral, emendas, baseKey: base, compKey: comp, anos, modalidades: mods, pVotos: Number(pVotos), pEmenda: Number(pEmenda) })
+      ? analisar({ eleitoral, emendas: emendasFiltradas, emendasParaRegiao: emendas, baseKey: base, compKey: comp, pVotos: Number(pVotos), pEmenda: Number(pEmenda) })
       : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [eleitoral, emendas, base, comp, JSON.stringify(anos), JSON.stringify(mods), pVotos, pEmenda]
+    [eleitoral, emendasFiltradas, emendas, base, comp, pVotos, pEmenda]
   );
 
-  if (!eleitoral) {
+  const passaMun = useCallback((r) =>
+    (!fil.busca || norm(r.nome).includes(norm(fil.busca))) &&
+    (!fil.regioes.length || fil.regioes.includes(r.regiao || '(sem região)')) &&
+    (!fil.classes.length || fil.classes.includes(CLASSES[r.classe].label)) &&
+    (fil.emenda === 'todos' || (fil.emenda === 'com' ? r.total > 0 : r.total === 0)) &&
+    (fil.votos === 'todos' || (fil.votos === 'com' ? r.vComp > 0 : r.vComp === 0)),
+  [fil]);
+
+  const rowsF = useMemo(() => (A ? A.rows.filter(passaMun) : []), [A, passaMun]);
+  const todasF = useMemo(() => (A ? A.todas.filter(passaMun) : []), [A, passaMun]);
+  const foraDoFiltro = useMemo(() => new Set(A ? A.todas.filter((r) => !passaMun(r)).map((r) => r.norm) : []), [A, passaMun]);
+  const regioesOpc = useMemo(() => unicos((A ? A.todas : []).map((r) => r.regiao || '(sem região)')), [A]);
+  const corr = useMemo(() => correlacoes(rowsF), [rowsF]);
+
+  const regioesAgg = useMemo(() => {
+    const m = new Map();
+    rowsF.forEach((r) => {
+      const k = r.regiao || 'Sem região definida';
+      let g = m.get(k);
+      if (!g) { g = { norm: norm(k), nome: k, definida: Boolean(r.regiao), munis: 0, comVotos: 0, vBase: 0, vComp: 0, qtd: 0, total: 0, pago: 0, top: null }; m.set(k, g); }
+      g.munis++; if (r.vComp > 0) g.comVotos++;
+      g.vBase += r.vBase; g.vComp += r.vComp; g.qtd += r.qtd; g.total += r.total; g.pago += r.pago;
+      if (!g.top || r.vComp > g.top.vComp) g.top = r;
+    });
+    const totComp = eleitoral && comp ? (eleitoral.totais[comp] || {}).votos : 0;
+    return [...m.values()].map((g) => ({
+      ...g,
+      delta: g.vComp - g.vBase,
+      deltaPct: g.vBase > 0 ? ((g.vComp - g.vBase) / g.vBase) * 100 : null,
+      share: totComp > 0 ? (g.vComp / totComp) * 100 : null,
+      rsPorVoto: g.vComp > 0 && g.total > 0 ? g.total / g.vComp : null,
+    }));
+  }, [rowsF, eleitoral, comp]);
+
+  /* ---- colunas da aba Lista (parecida com a planilha original) ---- */
+  const anosEmenda = opc.anos.filter((a) => /^\d{4}$/.test(a));
+  const colunasLista = useMemo(() => {
+    if (!eleitoral) return [];
+    const cols = [
+      { key: 'nome', label: 'Município', align: 'left', render: (r) => <span className="font-semibold text-sky-800 hover:underline">{r.nome}</span> },
+      { key: 'regiao', label: 'Região', align: 'left', render: (r) => r.regiao || <span className="text-slate-300">—</span> },
+    ];
+    eleitoral.eleicoes.forEach((el) => {
+      const get = (r) => r.v[el.key];
+      const cab = (t) => (<span>{t}<br /><span className="font-normal normal-case text-[9px] text-slate-500">{CARGO_CURTO[el.cargo] || el.cargo}</span></span>);
+      if (detalheComp) {
+        cols.push({ key: `c_${el.key}`, label: cab(`Comparec. ${el.ano}`), align: 'right', sortValue: (r) => (get(r) ? get(r).comp : null), render: (r) => (get(r) ? fmtInt(get(r).comp) : '—') });
+      }
+      cols.push({ key: `v_${el.key}`, label: cab(`Votos ${el.ano}`), align: 'right', sortValue: (r) => (get(r) ? get(r).votos : null), render: (r) => (get(r) ? <strong>{fmtInt(get(r).votos)}</strong> : <span className="text-slate-300">—</span>) });
+      if (detalheComp) {
+        cols.push({ key: `p_${el.key}`, label: cab(`% ${el.ano}`), align: 'right', sortValue: (r) => (get(r) && get(r).comp > 0 ? get(r).votos / get(r).comp : null), render: (r) => (get(r) && get(r).comp > 0 ? fmtPct((get(r).votos / get(r).comp) * 100, 2) : '—') });
+      }
+    });
+    cols.push({
+      key: 'evol', label: 'Evolução dos votos', align: 'left',
+      title: 'Primeiro → último pleito do mesmo cargo (deputado estadual). Passe o mouse sobre o gráfico para ver cada eleição.',
+      sortValue: (r) => { const s = serieEvolucao(eleitoral, r.v); return s && !s.sem ? s.delta : null; },
+      render: (r) => { const s = serieEvolucao(eleitoral, r.v); return s && !s.sem ? <VotosEvolucao eleitoral={eleitoral} municipio={r.nome} /> : <span className="text-slate-300">—</span>; },
+    });
+    cols.push({ key: 'qtd', label: 'Emendas', align: 'center', render: (r) => r.qtd || '—' });
+    cols.push({ key: 'total', label: 'Destinado', align: 'right', render: (r) => (r.total ? fmtBRL(r.total) : '—') });
+    cols.push({ key: 'pago', label: 'Pago', align: 'right', render: (r) => (r.pago ? fmtBRL(r.pago) : '—') });
+    if (emendasAno) {
+      anosEmenda.forEach((a) => {
+        cols.push({ key: `q_${a}`, label: `Emendas ${a}`, align: 'center', sortValue: (r) => (r.porAno[a] ? r.porAno[a].qtd : null), render: (r) => (r.porAno[a] ? r.porAno[a].qtd : '—') });
+        cols.push({ key: `t_${a}`, label: `Destinado ${a}`, align: 'right', sortValue: (r) => (r.porAno[a] ? r.porAno[a].total : null), render: (r) => (r.porAno[a] ? fmtBRL(r.porAno[a].total) : '—') });
+        cols.push({ key: `g_${a}`, label: `Pago ${a}`, align: 'right', sortValue: (r) => (r.porAno[a] ? r.porAno[a].pago : null), render: (r) => (r.porAno[a] ? fmtBRL(r.porAno[a].pago) : '—') });
+      });
+    }
+    return cols;
+  }, [eleitoral, detalheComp, emendasAno, anosEmenda.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rodapeLista = useMemo(() => {
+    if (!eleitoral) return null;
+    const f = { nome: `Total (${todasF.length} municípios)` };
+    eleitoral.eleicoes.forEach((el) => {
+      let v = 0, c = 0;
+      todasF.forEach((r) => { const x = r.v[el.key]; if (x) { v += x.votos || 0; c += x.comp || 0; } });
+      f[`v_${el.key}`] = fmtInt(v);
+      if (detalheComp) { f[`c_${el.key}`] = fmtInt(c); f[`p_${el.key}`] = c > 0 ? fmtPct((v / c) * 100, 2) : '—'; }
+    });
+    f.qtd = fmtInt(todasF.reduce((s, r) => s + r.qtd, 0));
+    f.total = fmtBRL(todasF.reduce((s, r) => s + r.total, 0));
+    f.pago = fmtBRL(todasF.reduce((s, r) => s + r.pago, 0));
+    if (emendasAno) {
+      anosEmenda.forEach((a) => {
+        f[`q_${a}`] = fmtInt(todasF.reduce((s, r) => s + (r.porAno[a] ? r.porAno[a].qtd : 0), 0));
+        f[`t_${a}`] = fmtBRL(todasF.reduce((s, r) => s + (r.porAno[a] ? r.porAno[a].total : 0), 0));
+        f[`g_${a}`] = fmtBRL(todasF.reduce((s, r) => s + (r.porAno[a] ? r.porAno[a].pago : 0), 0));
+      });
+    }
+    return f;
+  }, [eleitoral, todasF, detalheComp, emendasAno, anosEmenda.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------------- estado de carregamento / erro (depois de TODOS os hooks) ---------------- */
+  if (!eleitoral || !A) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-10">
         <div className="bg-white border border-slate-300 p-6">
           <h2 className="text-lg font-bold uppercase text-slate-900 mb-2">Inteligência Eleitoral</h2>
-          {status === 'loading' ? (
+          {status === 'loading' || status === 'atualizando' ? (
             <p className="text-sm text-slate-600">Carregando dados eleitorais...</p>
           ) : (
             <>
@@ -730,50 +1071,88 @@ export function EleitoralModule({ eleitoral, status, erro, recarregar, emendas, 
 
   const elBase = eleitoral.eleicoes.find((e) => e.key === base);
   const elComp = eleitoral.eleicoes.find((e) => e.key === comp);
-  const tBase = eleitoral.totais[base] || { votos: 0, n: 0 };
-  const tComp = eleitoral.totais[comp] || { votos: 0, n: 0 };
   const nomesEl = eleitoral.eleicoes.map((e) => [e.key, e.label]);
-
-  const alternar = (lista, setLista, todos, v) => {
-    const atual = lista || todos;
-    const novo = atual.includes(v) ? atual.filter((x) => x !== v) : [...atual, v];
-    setLista(novo.length ? novo : todos);
-  };
-
   const abrirMunicipio = (r) => openEntityFicha('municipio', r.nome);
 
-  const exportar = () => {
-    const out = A.rows.map((r) => ({
-      Município: r.nome,
-      Região: r.regiao,
-      [`Votos ${elBase.label}`]: r.vBase,
-      [`Votos ${elComp.label}`]: r.vComp,
-      'Variação de votos': r.delta,
-      'Variação %': r.deltaPct === null ? '' : r.deltaPct.toFixed(1).replace('.', ','),
-      'Emendas (qtd)': r.qtd,
-      'Valor destinado': r.total.toFixed(2).replace('.', ','),
-      'Valor pago': r.pago.toFixed(2).replace('.', ','),
-      'R$ por voto': r.rsPorVoto === null ? '' : r.rsPorVoto.toFixed(2).replace('.', ','),
-      Classificação: CLASSES[r.classe].label,
-    }));
-    exportRows(out, 'cruzamento_votos_emendas.csv');
+  const nFiltros =
+    (fil.busca ? 1 : 0) + (fil.regioes.length ? 1 : 0) + (fil.classes.length ? 1 : 0) + (fil.emenda !== 'todos' ? 1 : 0) +
+    (fil.votos !== 'todos' ? 1 : 0) + (fil.anos.length ? 1 : 0) + (fil.mods !== null ? 1 : 0) +
+    (fil.articuladores.length ? 1 : 0) + (fil.temas.length ? 1 : 0) + (fil.situacoes.length ? 1 : 0);
+
+  const resumoFiltros = () => {
+    const p = [];
+    if (fil.busca) p.push(`Busca: “${fil.busca}”`);
+    if (fil.regioes.length) p.push(`Região: ${fil.regioes.join(', ')}`);
+    if (fil.classes.length) p.push(`Classificação: ${fil.classes.join(', ')}`);
+    if (fil.emenda !== 'todos') p.push(fil.emenda === 'com' ? 'Só municípios com emendas' : 'Só municípios sem emendas');
+    if (fil.votos !== 'todos') p.push(fil.votos === 'com' ? `Só com votos em ${elComp.ano}` : `Só sem votos em ${elComp.ano}`);
+    if (fil.anos.length) p.push(`Ano das emendas: ${fil.anos.join(', ')}`);
+    if (fil.mods === null) { if (modsPadrao.length !== opc.mods.length) p.push('Modalidades: todas, exceto Execução Direta'); }
+    else if (fil.mods.length) p.push(`Modalidade: ${fil.mods.join(', ')}`);
+    if (fil.articuladores.length) p.push(`Articulador: ${fil.articuladores.join(', ')}`);
+    if (fil.temas.length) p.push(`Tema: ${fil.temas.join(', ')}`);
+    if (fil.situacoes.length) p.push(`Situação: ${fil.situacoes.join(', ')}`);
+    if (aba !== 'lista') p.push(`Comparação de votos: ${elBase.label} → ${elComp.label}`);
+    return p.length ? p.join(' • ') : 'Sem filtros (todos os municípios)';
   };
 
-  /* ---- abas ---- */
-  const colunasMunicipios = [
-    { key: 'nome', label: 'Município', align: 'left', render: (r) => <span className="font-semibold text-sky-800 hover:underline">{r.nome}</span> },
-    { key: 'regiao', label: 'Região', align: 'left', render: (r) => r.regiao || <span className="text-slate-300">—</span> },
-    { key: 'vBase', label: `Votos ${elBase.ano}`, align: 'right', render: (r) => fmtInt(r.vBase) },
-    { key: 'vComp', label: `Votos ${elComp.ano}`, align: 'right', render: (r) => <strong>{fmtInt(r.vComp)}</strong> },
-    { key: 'delta', label: 'Variação', align: 'right', render: (r) => <Delta v={r.delta} pct={r.deltaPct} /> },
-    { key: 'pctComp', label: '% s/ comp.*', title: 'Votos ÷ comparecimento das seções em que houve voto (pode superestimar em municípios pequenos).', align: 'right', render: (r) => fmtPct(r.pctComp, 2) },
-    { key: 'qtd', label: 'Emendas', align: 'center', render: (r) => r.qtd || '—' },
-    { key: 'total', label: 'Destinado', align: 'right', render: (r) => (r.total ? fmtBRL(r.total) : '—') },
-    { key: 'pago', label: 'Pago', align: 'right', render: (r) => (r.pago ? fmtBRL(r.pago) : '—') },
-    { key: 'rsPorVoto', label: 'R$/voto', title: 'Valor destinado ÷ votos na eleição mais recente', align: 'right', render: (r) => (r.rsPorVoto ? fmtBRL(r.rsPorVoto) : '—') },
-    { key: 'classe', label: 'Classificação', align: 'left', sortValue: (r) => CLASSES[r.classe].label, render: (r) => <Badge classe={r.classe} /> },
-  ];
+  /* ---- exportação CSV (o que está na aba aberta, já filtrado) ---- */
+  const objetosCruzamento = () => rowsF.map((r) => ({
+    Município: r.nome,
+    Região: r.regiao,
+    [`Votos ${elBase.label}`]: r.vBase,
+    [`Votos ${elComp.label}`]: r.vComp,
+    'Variação de votos': r.delta,
+    'Variação %': r.deltaPct === null ? '' : r.deltaPct.toFixed(1).replace('.', ','),
+    'Emendas (qtd)': r.qtd,
+    'Valor destinado': dinheiroCsv(r.total),
+    'Valor pago': dinheiroCsv(r.pago),
+    'R$ por voto': r.rsPorVoto === null ? '' : dinheiroCsv(r.rsPorVoto),
+    Classificação: CLASSES[r.classe].label,
+  }));
 
+  const objetosLista = () => todasF.map((r) => {
+    const o = { Município: r.nome, Região: r.regiao };
+    eleitoral.eleicoes.forEach((el) => {
+      const x = r.v[el.key];
+      if (detalheComp) o[`Comparecimento ${el.label}`] = x && x.comp !== null ? x.comp : '';
+      o[`Votos ${el.label}`] = x ? x.votos : '';
+      if (detalheComp) o[`% ${el.label}`] = x && x.comp > 0 ? ((x.votos / x.comp) * 100).toFixed(2).replace('.', ',') : '';
+    });
+    o['Evolução dos votos'] = textoEvolucao(serieEvolucao(eleitoral, r.v));
+    o['Emendas (qtd)'] = r.qtd;
+    o['Valor destinado'] = dinheiroCsv(r.total);
+    o['Valor pago'] = dinheiroCsv(r.pago);
+    if (emendasAno) {
+      anosEmenda.forEach((a) => {
+        const x = r.porAno[a];
+        o[`Emendas ${a} (qtd)`] = x ? x.qtd : 0;
+        o[`Destinado ${a}`] = dinheiroCsv(x ? x.total : 0);
+        o[`Pago ${a}`] = dinheiroCsv(x ? x.pago : 0);
+      });
+    }
+    return o;
+  });
+
+  const exportarCSV = () => {
+    if (aba === 'lista') return exportRows(objetosLista(), 'eleitoral_lista_municipios.csv');
+    if (aba === 'regioes') {
+      return exportRows(regioesAgg.map((g) => ({
+        Região: g.nome, Municípios: g.munis, [`Com votos ${elComp.ano}`]: g.comVotos,
+        [`Votos ${elBase.label}`]: g.vBase, [`Votos ${elComp.label}`]: g.vComp, 'Variação de votos': g.delta,
+        'Emendas (qtd)': g.qtd, 'Valor destinado': dinheiroCsv(g.total), 'Valor pago': dinheiroCsv(g.pago),
+        'R$ por voto': g.rsPorVoto === null ? '' : dinheiroCsv(g.rsPorVoto),
+      })), 'eleitoral_regioes.csv');
+    }
+    if (aba === 'dados') {
+      return exportRows(A.naoCasadas.map((a) => ({ Município: a.nome, 'Emendas (qtd)': a.qtd, 'Valor destinado': dinheiroCsv(a.total) })), 'eleitoral_emendas_sem_votos.csv');
+    }
+    return exportRows(objetosCruzamento(), 'eleitoral_cruzamento_votos_emendas.csv');
+  };
+
+  const alternarModo = (lista, valor) => (lista.includes(valor) ? lista.filter((x) => x !== valor) : [...lista, valor]);
+
+  /* ---- listas / quadros ---- */
   const lista = (titulo_, itens, cols) => (
     <Card title={titulo_}>
       {itens.length === 0 ? (
@@ -793,271 +1172,333 @@ export function EleitoralModule({ eleitoral, status, erro, recarregar, emendas, 
     </Card>
   );
 
-  const abas = [['geral', 'Visão geral'], ['municipios', 'Municípios'], ['mapa', 'Mapa'], ['matriz', 'Matriz votos × emendas'], ['regioes', 'Regiões'], ['dados', 'Qualidade dos dados']];
-
   const leitura = (rho, n, texto) => {
-    if (rho === null) return <p className="text-xs text-slate-400">{texto}: dados insuficientes.</p>;
+    if (rho === null) return <p className="text-xs text-slate-400">{texto}: dados insuficientes com os filtros atuais.</p>;
     const a = Math.abs(rho);
     const forca = a < 0.2 ? 'praticamente nenhuma' : a < 0.4 ? 'fraca' : a < 0.6 ? 'moderada' : 'forte';
     return (
       <p className="text-xs text-slate-700">
-        {texto}: <strong>ρ = {rho.toFixed(2).replace('.', ',')}</strong> ({forca}, {n} municípios).
+        {texto}: <strong>ρ = {rho.toFixed(2).replace('.', ',')}</strong> (associação {forca}, {n} municípios).
       </p>
     );
   };
 
-  const regioesAgg = useMemo(() => {
-    const m = new Map();
-    A.rows.forEach((r) => {
-      const k = r.regiao || 'Sem região definida';
-      let g = m.get(k);
-      if (!g) { g = { norm: norm(k), nome: k, definida: Boolean(r.regiao), munis: 0, comVotos: 0, vBase: 0, vComp: 0, qtd: 0, total: 0, pago: 0, top: null }; m.set(k, g); }
-      g.munis++; if (r.vComp > 0) g.comVotos++;
-      g.vBase += r.vBase; g.vComp += r.vComp; g.qtd += r.qtd; g.total += r.total; g.pago += r.pago;
-      if (!g.top || r.vComp > g.top.vComp) g.top = r;
-    });
-    return [...m.values()].map((g) => ({
-      ...g,
-      delta: g.vComp - g.vBase,
-      deltaPct: g.vBase > 0 ? ((g.vComp - g.vBase) / g.vBase) * 100 : null,
-      share: tComp.votos > 0 ? (g.vComp / tComp.votos) * 100 : null,
-      rsPorVoto: g.vComp > 0 && g.total > 0 ? g.total / g.vComp : null,
-    }));
-  }, [A, tComp.votos]);
+  const colunasCruzamento = [
+    { key: 'nome', label: 'Município', align: 'left', render: (r) => <span className="font-semibold text-sky-800 hover:underline">{r.nome}</span> },
+    { key: 'regiao', label: 'Região', align: 'left', render: (r) => r.regiao || <span className="text-slate-300">—</span> },
+    { key: 'vBase', label: `Votos ${elBase.ano}`, align: 'right', render: (r) => fmtInt(r.vBase) },
+    { key: 'vComp', label: `Votos ${elComp.ano}`, align: 'right', render: (r) => <strong>{fmtInt(r.vComp)}</strong> },
+    { key: 'delta', label: 'Variação', align: 'right', render: (r) => <Delta v={r.delta} pct={r.deltaPct} /> },
+    { key: 'pctComp', label: '% s/ comp.*', title: 'Votos ÷ comparecimento das seções em que houve voto (pode superestimar em municípios pequenos).', align: 'right', render: (r) => fmtPct(r.pctComp, 2) },
+    { key: 'qtd', label: 'Emendas', align: 'center', render: (r) => r.qtd || '—' },
+    { key: 'total', label: 'Destinado', align: 'right', render: (r) => (r.total ? fmtBRL(r.total) : '—') },
+    { key: 'pago', label: 'Pago', align: 'right', render: (r) => (r.pago ? fmtBRL(r.pago) : '—') },
+    { key: 'rsPorVoto', label: 'R$/voto', title: 'Valor destinado ÷ votos na eleição de chegada', align: 'right', render: (r) => (r.rsPorVoto ? fmtBRL(r.rsPorVoto) : '—') },
+    { key: 'classe', label: 'Classificação', align: 'left', sortValue: (r) => CLASSES[r.classe].label, render: (r) => <Badge classe={r.classe} /> },
+  ];
+
+  const sumComp = rowsF.reduce((s, r) => s + r.vComp, 0);
+  const sumBase = rowsF.reduce((s, r) => s + r.vBase, 0);
+  const totEstadoComp = (eleitoral.totais[comp] || {}).votos || 0;
+  const totalMun = rowsF.reduce((s, r) => s + r.total, 0);
+  const pagoMun = rowsF.reduce((s, r) => s + r.pago, 0);
+  const qtdMun = rowsF.reduce((s, r) => s + r.qtd, 0);
+  const contemplados = rowsF.filter((r) => r.total > 0);
+  const cobertura = sumComp > 0 ? (contemplados.reduce((s, r) => s + r.vComp, 0) / sumComp) * 100 : null;
+  const porAnoGeral = {};
+  rowsF.forEach((r) => Object.entries(r.porAno).forEach(([a, x]) => {
+    const g = porAnoGeral[a] || (porAnoGeral[a] = { qtd: 0, total: 0, pago: 0 });
+    g.qtd += x.qtd; g.total += x.total; g.pago += x.pago;
+  }));
+  const filtrado = nFiltros > 0;
+
+  const abas = [['lista', 'Lista'], ['geral', 'Visão geral'], ['cruzamento', 'Votos × emendas'], ['mapa', 'Mapa'], ['matriz', 'Matriz'], ['regioes', 'Regiões'], ['dados', 'Qualidade dos dados']];
+  const nomeAba = abas.find((a) => a[0] === aba)[1];
 
   return (
-    <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-4 animate-in fade-in print:max-w-none">
-      {/* controles */}
-      <div className="bg-white border border-slate-300 shadow-xs mb-4 p-3.5 print:hidden">
-        <div className="flex flex-wrap items-end gap-3">
-          <Seletor label="Eleição de partida" value={base} onChange={setBaseKey} options={nomesEl} />
-          <Seletor label="Eleição de chegada" value={comp} onChange={setCompKey} options={nomesEl} />
-          <Seletor label="Corte de votos" value={pVotos} onChange={setPVotos} options={OPCOES_CORTE} />
-          <Seletor label="Corte de emendas" value={pEmenda} onChange={setPEmenda} options={OPCOES_CORTE} />
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={exportar} className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-amber-100">Exportar CSV</button>
-            <button onClick={recarregar} className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-amber-100" title="Recarregar dados eleitorais">
-              {status === 'atualizando' ? 'Atualizando...' : 'Atualizar'}
-            </button>
-          </div>
+    <ImpressaoCtx.Provider value={imprimindo}>
+      <style>{`@media print { @page { size: A4 landscape; margin: 9mm; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`}</style>
+      <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-4 print:max-w-none print:p-0">
+        {/* cabeçalho que só aparece no PDF */}
+        <div className="hidden print:block mb-3 border-b-2 border-slate-800 pb-2">
+          <p className="text-base font-bold uppercase">TABULUM — Inteligência Eleitoral • {nomeAba}</p>
+          <p className="text-[10px] text-slate-700">Emitido em {new Date().toLocaleString('pt-BR')}</p>
+          <p className="text-[10px] text-slate-700"><strong>Filtros:</strong> {resumoFiltros()}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 pt-3 border-t border-slate-200">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] font-bold uppercase text-slate-500 mr-1">Ano das emendas</span>
-            {anosDisp.map((a) => (<Chip key={a} ativo={anos.includes(a)} onClick={() => alternar(anosSel, setAnosSel, anosDisp, a)}>{a}</Chip>))}
-          </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] font-bold uppercase text-slate-500 mr-1">Modalidade</span>
-            {modsDisp.map((m) => (<Chip key={m} ativo={mods.includes(m)} onClick={() => alternar(modSel, setModSel, modsDisp, m)}>{m}</Chip>))}
-          </div>
-        </div>
-        {modsDisp.some((m) => /execu[cç][aã]o direta/i.test(m)) && !mods.some((m) => /execu[cç][aã]o direta/i.test(m)) && (
-          <p className="text-[11px] text-slate-500 mt-2">
-            Execução Direta fica de fora por padrão: o recurso vai para órgãos do estado (UDESC, bombeiros etc.), não para o município, e inflaria Florianópolis.
+
+        <div className="mb-3 print:hidden">
+          <h2 className="text-base font-bold uppercase text-slate-900">Inteligência Eleitoral</h2>
+          <p className="text-xs text-slate-500">
+            Votos do mandato em cada município, cruzados com as emendas. Os filtros abaixo valem para todas as abas, para o CSV e para o PDF.
           </p>
+        </div>
+
+        {/* filtros universais */}
+        <div className="bg-white border border-slate-300 shadow-xs mb-4 p-3 print:hidden space-y-3">
+          <div className="flex flex-wrap items-end gap-2.5">
+            <span className="text-[10px] font-bold uppercase text-sky-800 w-full lg:w-auto lg:mr-1 lg:pb-2">Onde</span>
+            <label className="flex flex-col text-[10px] font-bold uppercase text-slate-500">
+              Município
+              <input value={fil.busca} onChange={(e) => setF({ busca: e.target.value })} placeholder="Digite o nome..." className="mt-0.5 border border-slate-300 bg-white px-2 py-[3px] text-xs font-medium normal-case text-slate-800 w-40 focus:outline-none focus:border-sky-700" />
+            </label>
+            <MultiFiltro label="Região" opcoes={regioesOpc} valor={fil.regioes} onChange={(v) => setF({ regioes: v })} vazioTexto="Todas" />
+            <MultiFiltro label="Classificação" opcoes={Object.values(CLASSES).map((c) => c.label)} valor={fil.classes} onChange={(v) => setF({ classes: v })} vazioTexto="Todas" largura="w-56" />
+            <Seletor label="Emendas no município" value={fil.emenda} onChange={(v) => setF({ emenda: v })} options={[['todos', 'Com e sem emendas'], ['com', 'Só com emendas'], ['sem', 'Só sem emendas']]} />
+            <Seletor label="Votos" value={fil.votos} onChange={(v) => setF({ votos: v })} options={[['todos', 'Com e sem votos'], ['com', `Só com votos em ${elComp.ano}`], ['sem', `Só sem votos em ${elComp.ano}`]]} />
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {nFiltros > 0 && (
+                <button onClick={() => setFil(FILTROS_VAZIOS)} className="px-3 py-1.5 text-xs font-semibold text-rose-700 border border-rose-300 bg-white hover:bg-rose-50">
+                  Limpar filtros ({nFiltros})
+                </button>
+              )}
+              <button onClick={exportarCSV} className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-amber-100" title="Baixa em CSV o que está na aba aberta, com os filtros aplicados">Baixar CSV</button>
+              <button onClick={() => setImprimindo(true)} className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-sky-700 hover:text-white" title="Gera o PDF da aba aberta, com os filtros aplicados">PDF</button>
+              <button onClick={recarregar} className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-amber-100" title="Recarregar dados eleitorais">
+                {status === 'atualizando' ? 'Atualizando...' : 'Atualizar'}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2.5 pt-3 border-t border-slate-200">
+            <span className="text-[10px] font-bold uppercase text-sky-800 w-full lg:w-auto lg:mr-1 lg:pb-2">Quais emendas</span>
+            <MultiFiltro label="Ano da emenda" opcoes={opc.anos} valor={fil.anos} onChange={(v) => setFEmenda({ anos: v })} vazioTexto="Todos" largura="w-44" />
+            <MultiFiltro label="Modalidade" opcoes={opc.mods} valor={mods} onChange={(v) => setF({ mods: v })} vazioTexto="Todas" />
+            <MultiFiltro label="Articulador" opcoes={opc.arts} valor={fil.articuladores} onChange={(v) => setFEmenda({ articuladores: v })} vazioTexto="Todos" />
+            <MultiFiltro label="Tema" opcoes={opc.temas} valor={fil.temas} onChange={(v) => setFEmenda({ temas: v })} vazioTexto="Todos" />
+            <MultiFiltro label="Situação" opcoes={opc.sits} valor={fil.situacoes} onChange={(v) => setFEmenda({ situacoes: v })} vazioTexto="Todas" largura="w-52" />
+            {modsPadrao.length !== opc.mods.length && fil.mods === null && (
+              <p className="text-[11px] text-slate-500 max-w-md pb-1">
+                A <strong>Execução Direta</strong> fica de fora por padrão: o dinheiro vai para órgãos do estado, não para o município. Para incluí-la, marque-a em Modalidade.
+              </p>
+            )}
+          </div>
+
+          {aba !== 'lista' && (
+            <div className="flex flex-wrap items-end gap-3 pt-3 border-t border-slate-200">
+              <span className="text-[10px] font-bold uppercase text-sky-800 w-full lg:w-auto lg:mr-1 lg:pb-2">Comparar votos</span>
+              <Seletor label="De" value={base} onChange={setBaseKey} options={nomesEl} />
+              <Seletor label="Para" value={comp} onChange={setCompKey} options={nomesEl} />
+              <details className="text-xs self-end pb-0.5">
+                <summary className="cursor-pointer text-sky-700 font-semibold">Como os municípios são classificados?</summary>
+                <div className="mt-2 p-3 bg-slate-50 border border-slate-200 space-y-2 text-slate-700 max-w-2xl">
+                  <p>
+                    Cada município é comparado com os demais. <strong>Votação alta</strong> = está entre os{' '}
+                    <select value={pVotos} onChange={(e) => setPVotos(e.target.value)} className="border border-slate-300 bg-white px-1 py-0.5">
+                      {OPCOES_CORTE.map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
+                    </select>{' '}
+                    que mais votaram no candidato. <strong>Emenda alta</strong> = está entre os{' '}
+                    <select value={pEmenda} onChange={(e) => setPEmenda(e.target.value)} className="border border-slate-300 bg-white px-1 py-0.5">
+                      {OPCOES_CORTE.map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
+                    </select>{' '}
+                    que mais receberam em emendas.
+                  </p>
+                  <ul className="space-y-1">
+                    {Object.values(CLASSES).map((c) => (
+                      <li key={c.label} className="flex items-center gap-2"><span className={`inline-block px-1.5 py-0.5 text-[10px] font-bold uppercase ${c.badge}`}>{c.label}</span><span>{c.desc}</span></li>
+                    ))}
+                  </ul>
+                  <p className="text-slate-500">Atualmente: votação alta a partir de <strong>{fmtInt(A.cortes.votos)}</strong> votos; emenda alta a partir de <strong>{fmtBRL(A.cortes.emenda)}</strong>.</p>
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+
+        {/* abas */}
+        <div className="flex flex-wrap border-b border-slate-300 mb-4 print:hidden">
+          {abas.map(([k, l]) => (
+            <button
+              key={k}
+              onClick={() => setAba(k)}
+              className={`px-3.5 py-2 text-xs font-bold uppercase border border-b-0 -mb-px ${aba === k ? 'bg-white border-slate-300 text-sky-800' : 'bg-slate-100 border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {aba === 'lista' && (
+          <Card
+            title={`Lista por município (${todasF.length}${filtrado ? ' após filtros' : ''})`}
+            right={
+              <div className="flex items-center gap-1.5 print:hidden">
+                <Chip ativo={detalheComp} onClick={() => setDetalheComp((v) => !v)}>Comparecimento e %</Chip>
+                <Chip ativo={emendasAno} onClick={() => setEmendasAno((v) => !v)}>Emendas por ano</Chip>
+              </div>
+            }
+          >
+            <DataTable columns={colunasLista} rows={todasF} initialSort={{ key: `v_${comp}`, dir: 'desc' }} onRowClick={abrirMunicipio} pageSize={150} footer={rodapeLista} empty="Nenhum município com os filtros atuais." />
+            <p className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
+              “—” = sem votos registrados naquela eleição. Vereador e prefeito (2016, 2020, 2024) existem apenas em Florianópolis. A planilha só traz as seções em que o candidato teve voto: o comparecimento é o dessas seções.
+              Clique no cabeçalho para ordenar; clique na linha para abrir a ficha do município.
+            </p>
+          </Card>
+        )}
+
+        {aba === 'geral' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+              <Kpi label={`Votos ${elComp.label}`} value={fmtInt(sumComp)} tone="sky"
+                sub={`${fmtSignedPct(sumBase > 0 ? ((sumComp - sumBase) / sumBase) * 100 : null)} vs ${elBase.ano} (${fmtInt(sumBase)})${filtrado ? ` • ${fmtPct(totEstadoComp > 0 ? (sumComp / totEstadoComp) * 100 : null)} do total` : ''}`} />
+              <Kpi label="Municípios com votos" value={fmtInt(rowsF.filter((r) => r.vComp > 0).length)} sub={`${fmtInt(rowsF.filter((r) => r.vBase > 0).length)} em ${elBase.ano}`} />
+              <Kpi label="Emendas destinadas" value={fmtBRLCompact(totalMun)} tone="rose" sub={`${fmtInt(qtdMun)} emendas`} />
+              <Kpi label="Valor pago" value={fmtBRLCompact(pagoMun)} tone="sky" sub={`${fmtPct(totalMun > 0 ? (pagoMun / totalMun) * 100 : null)} do destinado`} />
+              <Kpi label="Municípios contemplados" value={fmtInt(contemplados.length)} sub={`${fmtPct(cobertura)} dos votos de ${elComp.ano}`} />
+              <Kpi label="R$ por voto" value={sumComp > 0 ? fmtBRL(totalMun / sumComp) : '—'} tone="amber" sub={`destinado ÷ votos ${elComp.ano}`} />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card title="Votos por eleição (deputado estadual)">
+                <Barras
+                  formatar={fmtInt}
+                  itens={eleitoral.eleicoes.filter((e) => e.deputado).map((e) => ({
+                    label: String(e.ano), sub: CARGO_CURTO[e.cargo] || e.cargo,
+                    valor: todasF.reduce((s, r) => s + (r.v[e.key] ? r.v[e.key].votos || 0 : 0), 0),
+                  }))}
+                />
+              </Card>
+              <Card title="Emendas por ano (destinado × pago)" right={<span className="text-[10px] text-slate-500">azul: destinado • amarelo: pago</span>}>
+                <Barras
+                  formatar={fmtBRLCompact}
+                  itens={Object.keys(porAnoGeral).sort().map((a) => ({ label: a, sub: `${porAnoGeral[a].qtd} emendas`, valor: porAnoGeral[a].total, valor2: porAnoGeral[a].pago }))}
+                />
+              </Card>
+            </div>
+
+            <Card title="Leitura estatística (correlação de postos de Spearman)">
+              <div className="p-3 space-y-1.5">
+                {leitura(corr.votos, corr.nA, `Emendas destinadas × votos em ${elComp.ano}`)}
+                {leitura(corr.delta, corr.nB, `Emendas destinadas × variação de votos ${elBase.ano}→${elComp.ano}`)}
+                <p className="text-[11px] text-slate-500 pt-1">
+                  Associação não é causa: cidades grandes concentram votos e emendas ao mesmo tempo. Use como pista para aprofundar, não como prova de retorno eleitoral.
+                </p>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {lista('Bases a fortalecer — votos altos, pouca ou nenhuma emenda',
+                rowsF.filter((r) => r.classe === 'fortalecer').sort((a, b) => b.vComp - a.vComp).slice(0, 10),
+                (r) => [`${fmtInt(r.vComp)} votos`, r.total ? fmtBRLCompact(r.total) : 'sem emenda'])}
+              {lista('Investimento a converter — emendas altas, votos baixos',
+                rowsF.filter((r) => r.classe === 'converter').sort((a, b) => b.total - a.total).slice(0, 10),
+                (r) => [fmtBRLCompact(r.total), `${fmtInt(r.vComp)} votos`])}
+              {lista(`Maior crescimento de votos (${elBase.ano}→${elComp.ano})`,
+                rowsF.filter((r) => r.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10),
+                (r) => [<Delta key="d" v={r.delta} pct={r.deltaPct} />, r.total ? fmtBRLCompact(r.total) : 'sem emenda'])}
+              {lista(`Maior queda de votos (${elBase.ano}→${elComp.ano})`,
+                rowsF.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10),
+                (r) => [<Delta key="d" v={r.delta} pct={r.deltaPct} />, r.total ? fmtBRLCompact(r.total) : 'sem emenda'])}
+            </div>
+          </div>
+        )}
+
+        {aba === 'cruzamento' && (
+          <Card title={`Votos × emendas por município (${rowsF.length})`}>
+            <DataTable columns={colunasCruzamento} rows={rowsF} initialSort={{ key: 'vComp', dir: 'desc' }} onRowClick={abrirMunicipio} empty="Nenhum município com os filtros atuais." />
+          </Card>
+        )}
+
+        {aba === 'mapa' && (
+          <Card
+            title={`Mapa de Santa Catarina — ${elComp.label}`}
+            right={<button onClick={() => baixarSvgPng(mapaRef.current, 'eleitoral_mapa.png')} className="text-[11px] font-semibold px-2 py-0.5 border border-slate-400 bg-white hover:bg-amber-100 print:hidden">Baixar imagem (PNG)</button>}
+          >
+            <div ref={mapaRef}>
+              <MapaEleitoral rows={rowsF} mapGeoJson={mapGeoJson} onOpen={abrirMunicipio} foraDoFiltro={foraDoFiltro} />
+            </div>
+          </Card>
+        )}
+
+        {aba === 'matriz' && (
+          <Card
+            title="Matriz votos × emendas"
+            right={
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500">Cortes: ≥ {fmtInt(A.cortes.votos)} votos • ≥ {fmtBRLCompact(A.cortes.emenda)} em emendas</span>
+                <button onClick={() => baixarSvgPng(matrizRef.current, 'eleitoral_matriz.png')} className="text-[11px] font-semibold px-2 py-0.5 border border-slate-400 bg-white hover:bg-amber-100 print:hidden">Baixar imagem (PNG)</button>
+              </div>
+            }
+          >
+            <div className="p-3">
+              <div ref={matrizRef}><Matriz rows={rowsF} cortes={A.cortes} onOpen={abrirMunicipio} /></div>
+              <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-[11px] text-slate-600">
+                {Object.entries(CLASSES).map(([k, c]) => (
+                  <span key={k} className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full inline-block" style={{ background: c.cor }} />
+                    <strong>{c.label}</strong>: {c.desc} ({rowsF.filter((r) => r.classe === k).length})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {aba === 'regioes' && (
+          <Card title="Resumo por região">
+            <DataTable
+              initialSort={{ key: 'vComp', dir: 'desc' }}
+              rows={regioesAgg}
+              onRowClick={(g) => g.definida && openEntityFicha('regiao', g.nome)}
+              columns={[
+                { key: 'nome', label: 'Região', align: 'left', render: (g) => <span className={g.definida ? 'font-semibold text-sky-800 hover:underline' : 'italic text-slate-400'}>{g.nome}</span> },
+                { key: 'munis', label: 'Municípios', align: 'center' },
+                { key: 'comVotos', label: `Com votos ${elComp.ano}`, align: 'center' },
+                { key: 'vBase', label: `Votos ${elBase.ano}`, align: 'right', render: (g) => fmtInt(g.vBase) },
+                { key: 'vComp', label: `Votos ${elComp.ano}`, align: 'right', render: (g) => <strong>{fmtInt(g.vComp)}</strong> },
+                { key: 'delta', label: 'Variação', align: 'right', render: (g) => <Delta v={g.delta} pct={g.deltaPct} /> },
+                { key: 'share', label: '% dos votos', align: 'right', render: (g) => fmtPct(g.share) },
+                { key: 'qtd', label: 'Emendas', align: 'center' },
+                { key: 'total', label: 'Destinado', align: 'right', render: (g) => fmtBRL(g.total) },
+                { key: 'pago', label: 'Pago', align: 'right', render: (g) => fmtBRL(g.pago) },
+                { key: 'rsPorVoto', label: 'R$/voto', align: 'right', render: (g) => (g.rsPorVoto ? fmtBRL(g.rsPorVoto) : '—') },
+                { key: 'top', label: 'Maior base', align: 'left', sortValue: (g) => (g.top ? g.top.vComp : null), render: (g) => (g.top ? `${g.top.nome} (${fmtInt(g.top.vComp)})` : '—') },
+              ]}
+            />
+            <p className="p-3 text-[11px] text-slate-500 border-t border-slate-200">
+              A região de cada município vem das emendas cadastradas; municípios sem emendas aparecem em “Sem região definida”.
+              Para fechar essa lacuna, inclua uma coluna “Região” na aba Municípios da planilha de votos: o app passa a usá-la automaticamente.
+            </p>
+          </Card>
+        )}
+
+        {aba === 'dados' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Kpi label="Dados eleitorais" value={eleitoral.atualizadoEm ? new Date(eleitoral.atualizadoEm).toLocaleString('pt-BR') : '—'} sub={status === 'ok-cache' ? 'servidor indisponível: usando cópia local' : 'lido da planilha de votos'} />
+              <Kpi label="Municípios na planilha de votos" value={fmtInt(eleitoral.munis.length)} />
+              <Kpi label="Emendas sem município" value={fmtInt(A.semMun.qtd)} tone="rose" sub={`${fmtBRL(A.semMun.total)} (ex.: “ESTADUAL”)`} />
+              <Kpi label="Municípios com emenda sem votos" value={fmtInt(A.naoCasadas.length)} tone="amber" sub="podem ser nomes divergentes" />
+            </div>
+            <Card title="Municípios com emendas, mas sem linha na planilha de votos">
+              {A.naoCasadas.length === 0 ? (
+                <p className="p-3 text-xs text-slate-500">Nenhum. Todos os municípios com emendas têm votos registrados.</p>
+              ) : (
+                <div className="p-3">
+                  <p className="text-[11px] text-slate-500 mb-2">
+                    O candidato pode simplesmente não ter tido votos nesses municípios. Se o nome estiver escrito de forma diferente nas duas fontes, o cruzamento fica incompleto: confira.
+                  </p>
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y divide-slate-100">
+                      {A.naoCasadas.map((a) => (
+                        <tr key={a.nome}><td className="py-1 px-2 font-semibold">{a.nome}</td><td className="py-1 px-2 text-center">{a.qtd} emendas</td><td className="py-1 px-2 text-right">{fmtBRL(a.total)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+            <Card title="Como ler os números">
+              <ul className="p-3 text-xs text-slate-700 space-y-1.5 list-disc pl-6">
+                <li>A planilha de votos só traz as seções em que o candidato teve voto. Por isso o comparecimento é o das seções com voto e “% s/ comp.” pode ficar um pouco acima do real em municípios pequenos.</li>
+                <li>Votos de eleições diferentes só são comparáveis entre o mesmo cargo (deputado × deputado). Vereador e prefeito (2016, 2020, 2024) existem apenas para Florianópolis.</li>
+                <li>“R$ por voto” = valor destinado ÷ votos da eleição de chegada. Serve para comparar municípios, não como custo de voto.</li>
+                <li>A classificação compara cada município com os demais (critério ajustável em “Como os municípios são classificados?”).</li>
+              </ul>
+            </Card>
+          </div>
         )}
       </div>
-
-      {/* abas */}
-      <div className="flex flex-wrap border-b border-slate-300 mb-4 print:hidden">
-        {abas.map(([k, l]) => (
-          <button
-            key={k}
-            onClick={() => setAba(k)}
-            className={`px-3.5 py-2 text-xs font-bold uppercase border border-b-0 -mb-px ${aba === k ? 'bg-white border-slate-300 text-sky-800' : 'bg-slate-100 border-transparent text-slate-500 hover:text-slate-800'}`}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {aba === 'geral' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            <Kpi label={`Votos ${elComp.label}`} value={fmtInt(tComp.votos)} tone="sky"
-              sub={`${fmtSignedPct(tBase.votos > 0 ? ((tComp.votos - tBase.votos) / tBase.votos) * 100 : null)} vs ${elBase.ano} (${fmtInt(tBase.votos)})`} />
-            <Kpi label="Municípios com votos" value={fmtInt(tComp.n)} sub={`${fmtInt(tBase.n)} em ${elBase.ano}`} />
-            <Kpi label="Emendas destinadas" value={fmtBRLCompact(A.totalMunicipal)} tone="rose" sub={`${fmtInt(A.qtdMunicipal)} emendas no período`} />
-            <Kpi label="Valor pago" value={fmtBRLCompact(A.pagoMunicipal)} tone="sky" sub={`${fmtPct(A.totalMunicipal > 0 ? (A.pagoMunicipal / A.totalMunicipal) * 100 : null)} do destinado`} />
-            <Kpi label="Municípios contemplados" value={fmtInt(A.contemplados)} sub={`${fmtPct(A.cobertura)} dos votos de ${elComp.ano}`} />
-            <Kpi label="R$ por voto (estado)" value={tComp.votos > 0 ? fmtBRL(A.totalMunicipal / tComp.votos) : '—'} tone="amber" sub={`destinado ÷ votos ${elComp.ano}`} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card title="Votos por eleição">
-              <Barras
-                formatar={fmtInt}
-                itens={eleitoral.eleicoes.filter((e) => e.deputado).map((e) => ({ label: String(e.ano), sub: CARGO_CURTO[e.cargo] || e.cargo, valor: eleitoral.totais[e.key].votos }))}
-              />
-            </Card>
-            <Card title="Emendas por ano (destinado × pago)" right={<span className="text-[10px] text-slate-500">azul: destinado • amarelo: pago</span>}>
-              <Barras
-                formatar={fmtBRLCompact}
-                itens={Object.keys(A.porAnoGeral).sort().map((a) => ({ label: a, sub: `${A.porAnoGeral[a].qtd} emendas`, valor: A.porAnoGeral[a].total, valor2: A.porAnoGeral[a].pago }))}
-              />
-            </Card>
-          </div>
-
-          <Card title="Leitura estatística (correlação de postos de Spearman)">
-            <div className="p-3 space-y-1.5">
-              {leitura(A.corr.votos, A.corr.nA, `Emendas destinadas × votos em ${elComp.ano}`)}
-              {leitura(A.corr.delta, A.corr.nB, `Emendas destinadas × variação de votos ${elBase.ano}→${elComp.ano}`)}
-              <p className="text-[11px] text-slate-500 pt-1">
-                Associação não é causa: cidades grandes concentram votos e emendas ao mesmo tempo. Use como pista para aprofundar, não como prova de retorno eleitoral.
-              </p>
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {lista('Bases a fortalecer — votos altos, pouca ou nenhuma emenda',
-              A.rows.filter((r) => r.classe === 'fortalecer').sort((a, b) => b.vComp - a.vComp).slice(0, 10),
-              (r) => [`${fmtInt(r.vComp)} votos`, r.total ? fmtBRLCompact(r.total) : 'sem emenda'])}
-            {lista('Investimento a converter — emendas altas, votos baixos',
-              A.rows.filter((r) => r.classe === 'converter').sort((a, b) => b.total - a.total).slice(0, 10),
-              (r) => [fmtBRLCompact(r.total), `${fmtInt(r.vComp)} votos`])}
-            {lista(`Maior crescimento de votos (${elBase.ano}→${elComp.ano})`,
-              A.rows.filter((r) => r.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10),
-              (r) => [<Delta key="d" v={r.delta} pct={r.deltaPct} />, r.total ? fmtBRLCompact(r.total) : 'sem emenda'])}
-            {lista(`Maior queda de votos (${elBase.ano}→${elComp.ano})`,
-              A.rows.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10),
-              (r) => [<Delta key="d" v={r.delta} pct={r.deltaPct} />, r.total ? fmtBRLCompact(r.total) : 'sem emenda'])}
-          </div>
-        </div>
-      )}
-
-      {aba === 'municipios' && <MunicipiosTab rows={A.rows} colunas={colunasMunicipios} onOpen={abrirMunicipio} regioes={[...new Set(A.rows.map((r) => r.regiao).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))} />}
-
-      {aba === 'mapa' && (
-        <Card title={`Mapa de Santa Catarina — ${elComp.label}`}>
-          <MapaEleitoral rows={A.rows} mapGeoJson={mapGeoJson} onOpen={abrirMunicipio} />
-        </Card>
-      )}
-
-      {aba === 'matriz' && (
-        <Card
-          title="Matriz votos × emendas"
-          right={<span className="text-[10px] text-slate-500">Cortes: ≥ {fmtInt(A.cortes.votos)} votos • ≥ {fmtBRLCompact(A.cortes.emenda)} em emendas</span>}
-        >
-          <div className="p-3">
-            <Matriz rows={A.rows} cortes={A.cortes} onOpen={abrirMunicipio} />
-            <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-[11px] text-slate-600">
-              {Object.entries(CLASSES).map(([k, c]) => (
-                <span key={k} className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full inline-block" style={{ background: c.cor }} />
-                  <strong>{c.label}</strong>: {c.desc} ({A.rows.filter((r) => r.classe === k).length})
-                </span>
-              ))}
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {aba === 'regioes' && (
-        <Card title="Resumo por região">
-          <DataTable
-            initialSort={{ key: 'vComp', dir: 'desc' }}
-            rows={regioesAgg}
-            onRowClick={(g) => g.definida && openEntityFicha('regiao', g.nome)}
-            columns={[
-              { key: 'nome', label: 'Região', align: 'left', render: (g) => <span className={g.definida ? 'font-semibold text-sky-800 hover:underline' : 'italic text-slate-400'}>{g.nome}</span> },
-              { key: 'munis', label: 'Municípios', align: 'center' },
-              { key: 'comVotos', label: `Com votos ${elComp.ano}`, align: 'center' },
-              { key: 'vBase', label: `Votos ${elBase.ano}`, align: 'right', render: (g) => fmtInt(g.vBase) },
-              { key: 'vComp', label: `Votos ${elComp.ano}`, align: 'right', render: (g) => <strong>{fmtInt(g.vComp)}</strong> },
-              { key: 'delta', label: 'Variação', align: 'right', render: (g) => <Delta v={g.delta} pct={g.deltaPct} /> },
-              { key: 'share', label: '% dos votos', align: 'right', render: (g) => fmtPct(g.share) },
-              { key: 'qtd', label: 'Emendas', align: 'center' },
-              { key: 'total', label: 'Destinado', align: 'right', render: (g) => fmtBRL(g.total) },
-              { key: 'pago', label: 'Pago', align: 'right', render: (g) => fmtBRL(g.pago) },
-              { key: 'rsPorVoto', label: 'R$/voto', align: 'right', render: (g) => (g.rsPorVoto ? fmtBRL(g.rsPorVoto) : '—') },
-              { key: 'top', label: 'Maior base', align: 'left', sortValue: (g) => (g.top ? g.top.vComp : null), render: (g) => (g.top ? `${g.top.nome} (${fmtInt(g.top.vComp)})` : '—') },
-            ]}
-          />
-          <p className="p-3 text-[11px] text-slate-500 border-t border-slate-200">
-            A região de cada município vem das emendas cadastradas. Municípios sem emendas aparecem em “Sem região definida”.
-            Para fechar essa lacuna, basta incluir uma coluna “Região” na aba Municípios da planilha de votos: o app passa a usá-la automaticamente.
-          </p>
-        </Card>
-      )}
-
-      {aba === 'dados' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Kpi label="Dados eleitorais" value={eleitoral.atualizadoEm ? new Date(eleitoral.atualizadoEm).toLocaleString('pt-BR') : '—'} sub={status === 'ok-cache' ? 'servidor indisponível: usando cópia local' : 'lido da planilha de votos'} />
-            <Kpi label="Municípios na planilha de votos" value={fmtInt(eleitoral.munis.length)} />
-            <Kpi label="Emendas sem município" value={fmtInt(A.semMun.qtd)} tone="rose" sub={`${fmtBRL(A.semMun.total)} (ex.: “ESTADUAL”)`} />
-            <Kpi label="Municípios com emenda sem votos" value={fmtInt(A.naoCasadas.length)} tone="amber" sub="podem ser nomes divergentes" />
-          </div>
-          <Card title="Municípios com emendas, mas sem linha na planilha de votos">
-            {A.naoCasadas.length === 0 ? (
-              <p className="p-3 text-xs text-slate-500">Nenhum. Todos os municípios com emendas têm votos registrados.</p>
-            ) : (
-              <div className="p-3">
-                <p className="text-[11px] text-slate-500 mb-2">
-                  O Marquito pode simplesmente não ter tido votos nesses municípios. Se o nome estiver escrito de forma diferente nas duas fontes, o cruzamento fica incompleto: confira.
-                </p>
-                <table className="w-full text-xs">
-                  <tbody className="divide-y divide-slate-100">
-                    {A.naoCasadas.map((a) => (
-                      <tr key={a.nome}><td className="py-1 px-2 font-semibold">{a.nome}</td><td className="py-1 px-2 text-center">{a.qtd} emendas</td><td className="py-1 px-2 text-right">{fmtBRL(a.total)}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-          <Card title="Como ler os números">
-            <ul className="p-3 text-xs text-slate-700 space-y-1.5 list-disc pl-6">
-              <li>A planilha de votos só traz as seções em que o candidato teve voto. Por isso o comparecimento é o das seções com voto e “% s/ comp.” pode ficar um pouco acima do real em municípios pequenos.</li>
-              <li>Votos de eleições diferentes só são comparáveis entre o mesmo cargo (deputado × deputado). Vereador e prefeito (2016, 2020, 2024) existem apenas para Florianópolis.</li>
-              <li>“R$ por voto” = valor destinado ÷ votos da eleição de chegada. Serve para comparar municípios, não como custo de voto.</li>
-              <li>A classificação usa cortes por percentil (ajustáveis acima) sobre os municípios com votos/emendas no recorte atual.</li>
-            </ul>
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MunicipiosTab({ rows, colunas, onOpen, regioes }) {
-  const [busca, setBusca] = useState('');
-  const [reg, setReg] = useState('');
-  const [cls, setCls] = useState('');
-  const [emd, setEmd] = useState('');
-  const filtradas = useMemo(
-    () => rows.filter((r) =>
-      (!busca || norm(r.nome).includes(norm(busca))) &&
-      (!reg || r.regiao === reg) &&
-      (!cls || r.classe === cls) &&
-      (!emd || (emd === 'com' ? r.total > 0 : r.total === 0))
-    ),
-    [rows, busca, reg, cls, emd]
-  );
-  return (
-    <Card
-      title={`Municípios (${filtradas.length})`}
-      right={
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar município..." className="border border-slate-300 bg-white px-2 py-1 text-xs w-40 focus:outline-none focus:border-sky-700" />
-          <select value={reg} onChange={(e) => setReg(e.target.value)} className="border border-slate-300 bg-white px-1.5 py-1 text-xs">
-            <option value="">Todas as regiões</option>
-            {regioes.map((r) => (<option key={r} value={r}>{r}</option>))}
-          </select>
-          <select value={cls} onChange={(e) => setCls(e.target.value)} className="border border-slate-300 bg-white px-1.5 py-1 text-xs">
-            <option value="">Todas as classificações</option>
-            {Object.entries(CLASSES).map(([k, c]) => (<option key={k} value={k}>{c.label}</option>))}
-          </select>
-          <select value={emd} onChange={(e) => setEmd(e.target.value)} className="border border-slate-300 bg-white px-1.5 py-1 text-xs">
-            <option value="">Com e sem emendas</option>
-            <option value="com">Só com emendas</option>
-            <option value="sem">Só sem emendas</option>
-          </select>
-        </div>
-      }
-    >
-      <DataTable columns={colunas} rows={filtradas} initialSort={{ key: 'vComp', dir: 'desc' }} onRowClick={onOpen} />
-    </Card>
+    </ImpressaoCtx.Provider>
   );
 }
 
