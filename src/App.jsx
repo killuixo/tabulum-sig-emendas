@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus } from './eleitoral.jsx';
+import { useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus, VotosEvolucao, textoEvolucaoMunicipio } from './eleitoral.jsx';
 
 const Icon = ({ path, className = "w-4 h-4", onClick, size, style }) => (
   <svg
@@ -975,9 +975,13 @@ export default function App() {
       filterAnos.length;
 
     const hasFilters = Boolean(searchTerm) || activeFilterCount > 0;
-    const rowsForExport = currentView === 'entity' && selectedEntityFicha
+    const rowsForExportBase = currentView === 'entity' && selectedEntityFicha
       ? normalizedEmendas.filter(e => String(e[ENTITY_TYPE_META[selectedEntityFicha.type]?.field] || '').trim().toLowerCase() === String(selectedEntityFicha.value).trim().toLowerCase())
       : filteredAndSortedEmendas;
+    // acrescenta a evolução de votos do município (texto) quando há dados eleitorais
+    const rowsForExport = eleitoral
+      ? rowsForExportBase.map(e => ({ ...e, 'EVOLUÇÃO DE VOTOS DO MUNICÍPIO': textoEvolucaoMunicipio(eleitoral, e['MUNICÍPIO']) }))
+      : rowsForExportBase;
 
     const latestSevenUpdates = updateHistory.slice(0, 7);
 
@@ -1577,15 +1581,23 @@ export default function App() {
     if (activeViewMode === 'table') {
       return (
         <div className="bg-white border border-slate-300 overflow-x-auto shadow-xs print:shadow-none print:border print:overflow-visible print:w-full">
-          <table className="min-w-[1200px] w-full border-collapse table-fixed print:min-w-0 print:w-full">
+          <table className={`${eleitoral ? 'min-w-[1350px]' : 'min-w-[1200px]'} w-full border-collapse table-fixed print:min-w-0 print:w-full`}>
             <thead className="bg-amber-200/85 border-b border-slate-400 print:bg-amber-200">
               <tr>
                 <SortableHeader label="Número" sortKey="NÚMERO DA EMENDA" extraClasses="w-[82px] px-2.5 print:w-[7%]" />
                 <SortableHeader label="Região" sortKey="REGIÃO" extraClasses="w-[105px] px-2.5 print:w-[8%]" />
                 <SortableHeader label="Município" sortKey="MUNICÍPIO" extraClasses="w-[125px] px-2.5 print:w-[10%]" />
+                {eleitoral && (
+                  <th
+                    className="w-[150px] px-2 py-2.5 text-left text-[11px] font-bold text-slate-800 uppercase border-r border-slate-300 print:border-slate-800 print:w-[8%]"
+                    title="Votos do candidato no município: do primeiro ao último pleito de deputado estadual"
+                  >
+                    Votos (evolução)
+                  </th>
+                )}
                 <SortableHeader label="Modalidade" sortKey="MODALIDADE" extraClasses="w-[120px] px-2 print:w-[9%]" />
                 <SortableHeader label="Entidade" sortKey="RAZÃO SOCIAL" extraClasses="w-[155px] px-2.5 print:w-[13%]" />
-                <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="w-[34%] min-w-[300px] px-3 print:w-[25%]" />
+                <SortableHeader label="Objeto" sortKey="OBJETO" extraClasses="w-[34%] min-w-[300px] px-3 print:w-[21%]" />
                 <SortableHeader label="Unidade Orçamentária" sortKey="UNIDADE ORÇAMENTÁRIA" extraClasses="w-[105px] px-2 print:w-[7%]" />
                 <SortableHeader label="Articulador" sortKey="ARTICULADOR" extraClasses="w-[95px] px-2.5 print:w-[7%]" />
                 <SortableHeader label="Situação" sortKey="SITUAÇÃO" extraClasses="w-[95px] px-2 print:w-[7%]" />
@@ -1619,6 +1631,15 @@ export default function App() {
                   >
                     {emenda['MUNICÍPIO']}
                   </td>
+
+                  {eleitoral && (
+                    <td
+                      onClick={(e) => emenda['MUNICÍPIO'] && openEntityFicha('municipio', emenda['MUNICÍPIO'], e)}
+                      className="px-2 py-2.5 border-r border-slate-200 align-top cursor-pointer"
+                    >
+                      <VotosEvolucao eleitoral={eleitoral} municipio={emenda['MUNICÍPIO']} />
+                    </td>
+                  )}
 
                   <td
                     onClick={(e) => emenda.MODALIDADE && openEntityFicha('modalidade', emenda.MODALIDADE, e)}
@@ -1690,7 +1711,7 @@ export default function App() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan="11" className="px-6 py-10 text-center font-medium text-slate-400 uppercase text-xs">
+                  <td colSpan={eleitoral ? 12 : 11} className="px-6 py-10 text-center font-medium text-slate-400 uppercase text-xs">
                     Nenhuma emenda encontrada.
                   </td>
                 </tr>
