@@ -162,6 +162,7 @@ function montarPayload(rows) {
   const iMun = cab.findIndex((h) => semAcento(h) === 'municipio');
   if (iMun < 0) throw new Error('coluna_municipio_ausente');
   const iReg = cab.findIndex((h) => semAcento(h) === 'regiao'); // opcional
+  const iAssoc = cab.findIndex((h) => /^associacao/.test(semAcento(h))); // opcional
 
   const re = /^(\d{4})\s*[–—-]\s*(.+?)\s*-\s*(Comparecimento|Votos)\s*$/i;
   const mapa = new Map();
@@ -190,6 +191,7 @@ function montarPayload(rows) {
     }
     const item = { nome, v };
     if (iReg >= 0 && row[iReg]) item.regiao = String(row[iReg]).trim();
+    if (iAssoc >= 0 && row[iAssoc]) item.associacao = String(row[iAssoc]).trim();
     municipios.push(item);
   }
 
