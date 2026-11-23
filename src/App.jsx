@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus, VotosEvolucao, textoEvolucaoMunicipio } from './eleitoral.jsx';
+import {
+  useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus, VotosEvolucao, textoEvolucaoMunicipio,
+  BarraEleitoral, calcularCruzamento, CFG_PADRAO, RESULTADOS, norm as chaveMun, tituloMunicipio,
+} from './eleitoral.jsx';
 
 const Icon = ({ path, className = "w-4 h-4", onClick, size, style }) => (
   <svg
@@ -34,7 +37,6 @@ const CheckCircleIcon = (p) => <Icon {...p} path={<><path d="M22 11.08V12a10 10 
 const AlertTriangleIcon = (p) => <Icon {...p} path={<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></>} />;
 const RefreshCwIcon = (p) => <Icon {...p} path={<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>} />;
 const UploadCloudIcon = (p) => <Icon {...p} path={<><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></>} />;
-const LayoutDashboardIcon = (p) => <Icon {...p} path={<><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></>} />;
 const TableIcon = (p) => <Icon {...p} path={<><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></>} />;
 const ChevronUpIcon = (p) => <Icon {...p} path={<><path d="m18 15-6-6-6 6"/></>} />;
 const ChevronDownIcon = (p) => <Icon {...p} path={<><path d="m6 9 6 6 6-6"/></>} />;
@@ -343,6 +345,10 @@ export default function App() {
   const [filterUOs, setFilterUOs] = useState([]);
   const [filterSituacoes, setFilterSituacoes] = useState([]);
   const [filterAnos, setFilterAnos] = useState([]);
+  const [filterAssociacoes, setFilterAssociacoes] = useState([]);
+  const [filterResultados, setFilterResultados] = useState([]);
+  const [eleitoralCfg, setEleitoralCfgState] = useState(CFG_PADRAO);
+  const setEleitoralCfg = (parcial) => setEleitoralCfgState(c => ({ ...c, ...parcial }));
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -387,8 +393,20 @@ export default function App() {
   }, [emendas, updateHistory]);
 
   const articuladores = useMemo(() => [...new Set(normalizedEmendas.map(e => e.ARTICULADOR).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
-  const municipios = useMemo(() => [...new Set(normalizedEmendas.map(e => e['MUNICÍPIO']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
-  const regioes = useMemo(() => [...new Set(normalizedEmendas.map(e => e.REGIÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
+  // Município/Região: união das emendas com a planilha de votos (cidades sem emenda também podem ser filtradas)
+  const municipios = useMemo(() => {
+    const mapa = new Map();
+    normalizedEmendas.forEach(e => { const n = e['MUNICÍPIO']; if (n && !mapa.has(chaveMun(n))) mapa.set(chaveMun(n), n); });
+    if (eleitoral) eleitoral.munis.forEach(m => { if (!mapa.has(m.norm)) mapa.set(m.norm, tituloMunicipio(m.nome)); });
+    return [...mapa.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [normalizedEmendas, eleitoral]);
+  const regioes = useMemo(() => {
+    const mapa = new Map();
+    normalizedEmendas.forEach(e => { if (e.REGIÃO && chaveMun(e.REGIÃO) !== 'ESTADUAL' && !mapa.has(chaveMun(e.REGIÃO))) mapa.set(chaveMun(e.REGIÃO), e.REGIÃO); });
+    if (eleitoral) eleitoral.regiaoPorChave.forEach(r => { if (!mapa.has(chaveMun(r))) mapa.set(chaveMun(r), r); });
+    return [...mapa.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [normalizedEmendas, eleitoral]);
+  const associacoes = useMemo(() => (eleitoral ? [...new Set([...eleitoral.associacaoPorChave.values()])].sort((a, b) => a.localeCompare(b, 'pt-BR')) : []), [eleitoral]);
   const modalidades = useMemo(() => [...new Set(normalizedEmendas.map(e => e.MODALIDADE).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const entidades = useMemo(() => [...new Set(normalizedEmendas.map(e => e['RAZÃO SOCIAL']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
   const temas = useMemo(() => [...new Set(normalizedEmendas.map(e => e.TEMA).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
@@ -508,6 +526,8 @@ export default function App() {
     setFilterUOs([]);
     setFilterSituacoes([]);
     setFilterAnos([]);
+    setFilterAssociacoes([]);
+    setFilterResultados([]);
   };
 
   const resetToFrontPage = () => {
@@ -708,48 +728,81 @@ export default function App() {
     setSortConfig({ key, direction });
   };
 
-  const filteredAndSortedEmendas = useMemo(() => {
-    const filtered = normalizedEmendas.filter(e => {
+  // Região/associação de cada emenda: a planilha de votos (cobre as 295 cidades) tem prioridade sobre o campo da emenda
+  const regiaoDaEmenda = (e) => (eleitoral && eleitoral.regiaoPorChave.get(chaveMun(e['MUNICÍPIO']))) || e.REGIÃO;
+  const associacaoDaEmenda = (e) => (eleitoral ? eleitoral.associacaoPorChave.get(chaveMun(e['MUNICÍPIO'])) : '') || '';
+
+  const emendaFiltroAtivo =
+    Boolean(searchTerm) || filterArticuladores.length > 0 || filterEntidades.length > 0 || filterTemas.length > 0 ||
+    filterUOs.length > 0 || filterSituacoes.length > 0 || filterAnos.length > 0 || filterModalidades.length > 0;
+
+  // 1) todos os filtros, EXCETO o de resultado (a conversão depende deles)
+  const filteredBase = useMemo(() => {
+    const mSet = new Set(filterMunicipios.map(chaveMun));
+    const rSet = new Set(filterRegioes.map(chaveMun));
+    const aSet = new Set(filterAssociacoes.map(chaveMun));
+    return normalizedEmendas.filter(e => {
       const matchesSearch = searchTerm === '' || JSON.stringify(e).toLowerCase().includes(searchTerm.toLowerCase());
       const matchesArticulador = filterArticuladores.length === 0 || filterArticuladores.includes(e.ARTICULADOR);
-      const matchesMunicipio = filterMunicipios.length === 0 || filterMunicipios.includes(e['MUNICÍPIO']);
-      const matchesRegiao = filterRegioes.length === 0 || filterRegioes.includes(e.REGIÃO);
+      const matchesMunicipio = mSet.size === 0 || mSet.has(chaveMun(e['MUNICÍPIO']));
+      const matchesRegiao = rSet.size === 0 || rSet.has(chaveMun(regiaoDaEmenda(e)));
+      const matchesAssociacao = aSet.size === 0 || aSet.has(chaveMun(associacaoDaEmenda(e)));
       const matchesModalidade = filterModalidades.length === 0 || filterModalidades.includes(e.MODALIDADE);
       const matchesEntidade = filterEntidades.length === 0 || filterEntidades.includes(e['RAZÃO SOCIAL']);
       const matchesTema = filterTemas.length === 0 || filterTemas.includes(e.TEMA);
       const matchesUO = filterUOs.length === 0 || filterUOs.includes(e['UNIDADE ORÇAMENTÁRIA']);
       const matchesSituacao = filterSituacoes.length === 0 || filterSituacoes.includes(e.SITUAÇÃO);
       const matchesAno = filterAnos.length === 0 || filterAnos.includes(String(e.ANO || '').trim());
-
       return (
-        matchesSearch &&
-        matchesArticulador &&
-        matchesMunicipio &&
-        matchesRegiao &&
-        matchesModalidade &&
-        matchesEntidade &&
-        matchesTema &&
-        matchesUO &&
-        matchesSituacao &&
-        matchesAno
+        matchesSearch && matchesArticulador && matchesMunicipio && matchesRegiao && matchesAssociacao &&
+        matchesModalidade && matchesEntidade && matchesTema && matchesUO && matchesSituacao && matchesAno
       );
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedEmendas, eleitoral, searchTerm, filterArticuladores, filterMunicipios, filterRegioes, filterAssociacoes,
+    filterModalidades, filterEntidades, filterTemas, filterUOs, filterSituacoes, filterAnos]);
 
-    return sortEmendasList(filtered, sortConfig);
-  }, [
-    normalizedEmendas,
-    searchTerm,
-    filterArticuladores,
-    filterMunicipios,
-    filterRegioes,
-    filterModalidades,
-    filterEntidades,
-    filterTemas,
-    filterUOs,
-    filterSituacoes,
-    filterAnos,
-    sortConfig
-  ]);
+  // 2) cruzamento votos × emendas (alimenta a barra de "Resultado", o módulo Eleitoral e o filtro do Painel)
+  const cruz = useMemo(
+    () => calcularCruzamento({
+      eleitoral, emendasBase: filteredBase, emendasTodas: normalizedEmendas, cfg: eleitoralCfg,
+      filtros: { municipios: filterMunicipios, regioes: filterRegioes, associacoes: filterAssociacoes, emendaFiltroAtivo, busca: searchTerm },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eleitoral, filteredBase, normalizedEmendas, eleitoralCfg, filterMunicipios, filterRegioes, filterAssociacoes, emendaFiltroAtivo, searchTerm]
+  );
+
+  // 3) lista final: aplica o filtro de resultado (ex.: só emendas de municípios onde converteu) e a ordenação
+  const filteredAndSortedEmendas = useMemo(() => {
+    let lista = filteredBase;
+    if (filterResultados.length && cruz) {
+      lista = lista.filter(e => filterResultados.includes(cruz.resultadoPorChave.get(chaveMun(e['MUNICÍPIO']))));
+    }
+    return sortEmendasList(lista, sortConfig);
+  }, [filteredBase, cruz, filterResultados, sortConfig]);
+
+  const resumoFiltros = useMemo(() => {
+    const p = [];
+    if (searchTerm) p.push(`Busca: “${searchTerm}”`);
+    if (filterMunicipios.length) p.push(`Município: ${filterMunicipios.join(', ')}`);
+    if (filterRegioes.length) p.push(`Região: ${filterRegioes.join(', ')}`);
+    if (filterAssociacoes.length) p.push(`Associação: ${filterAssociacoes.join(', ')}`);
+    if (filterModalidades.length) p.push(`Modalidade: ${filterModalidades.join(', ')}`);
+    if (filterEntidades.length) p.push(`Entidade: ${filterEntidades.join(', ')}`);
+    if (filterArticuladores.length) p.push(`Articulador: ${filterArticuladores.join(', ')}`);
+    if (filterTemas.length) p.push(`Tema: ${filterTemas.join(', ')}`);
+    if (filterUOs.length) p.push(`Unid. orçamentária: ${filterUOs.join(', ')}`);
+    if (filterSituacoes.length) p.push(`Situação: ${filterSituacoes.join(', ')}`);
+    if (filterAnos.length) p.push(`Ano: ${filterAnos.join(', ')}`);
+    if (filterResultados.length) p.push(`Resultado: ${filterResultados.map(k => RESULTADOS[k].label).join(', ')}`);
+    if (cruz && eleitoral) {
+      const nb = eleitoral.eleicoes.find(x => x.key === cruz.baseKey);
+      const nc = eleitoral.eleicoes.find(x => x.key === cruz.compKey);
+      if (nb && nc) p.push(`Votos de ${nb.label} para ${nc.label}`);
+      p.push(eleitoralCfg.incluirExecDireta ? 'Inclui Execução Direta' : 'Sem Execução Direta no cruzamento com votos');
+    }
+    return p.length ? p.join(' • ') : 'Sem filtros (todos os municípios)';
+  }, [searchTerm, filterMunicipios, filterRegioes, filterAssociacoes, filterModalidades, filterEntidades, filterArticuladores, filterTemas, filterUOs, filterSituacoes, filterAnos, filterResultados, cruz, eleitoral, eleitoralCfg]);
 
   const exportRowsToCSV = (rowsToExport, filename = "emendas_filtradas.csv") => {
     if (!rowsToExport || rowsToExport.length === 0) {
@@ -862,7 +915,6 @@ export default function App() {
 
   const getCurrentPageTitle = () => {
     if (currentView === 'list') return 'Painel';
-    if (currentView === 'dashboard') return 'Dashboard';
     if (currentView === 'updates') return 'Histórico de Atualizações';
     if (currentView === 'entity' && selectedEntityFicha) {
       const meta = ENTITY_TYPE_META[selectedEntityFicha.type];
@@ -972,7 +1024,9 @@ export default function App() {
       filterTemas.length +
       filterUOs.length +
       filterSituacoes.length +
-      filterAnos.length;
+      filterAnos.length +
+      filterAssociacoes.length +
+      filterResultados.length;
 
     const hasFilters = Boolean(searchTerm) || activeFilterCount > 0;
     const rowsForExportBase = currentView === 'entity' && selectedEntityFicha
@@ -1021,14 +1075,6 @@ export default function App() {
                 }`}
               >
                 <TableIcon className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Painel</span>
-              </button>
-              <button
-                onClick={() => { setCurrentView('dashboard'); setSelectedEntityFicha(null); }}
-                className={`px-2.5 py-1 flex items-center text-xs font-medium transition-colors ${
-                  currentView === 'dashboard' ? 'bg-amber-300 text-slate-900 font-semibold' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <LayoutDashboardIcon className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Dashboard</span>
               </button>
               {(eleitoral || eleitoralStatus === 'loading') && (
                 <button
@@ -1186,7 +1232,7 @@ export default function App() {
           </div>
         </div>
 
-        {(currentView === 'list' || currentView === 'dashboard' || currentView === 'entity') && (
+        {(currentView === 'list' || currentView === 'eleitoral' || currentView === 'entity') && (
           <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-1.5 bg-white">
             <div className="flex flex-wrap items-center gap-1.5 flex-1">
               <div className="relative w-36 sm:w-44">
@@ -1216,6 +1262,9 @@ export default function App() {
                 <MultiSelect id="art" label="Articulador" options={articuladores} selected={filterArticuladores} onChange={setFilterArticuladores} />
                 <MultiSelect id="mun" label="Município" options={municipios} selected={filterMunicipios} onChange={setFilterMunicipios} />
                 <MultiSelect id="reg" label="Região" options={regioes} selected={filterRegioes} onChange={setFilterRegioes} />
+                {associacoes.length > 0 && (
+                  <MultiSelect id="assoc" label="Associação" options={associacoes} selected={filterAssociacoes} onChange={setFilterAssociacoes} />
+                )}
                 <MultiSelect id="tem" label="Tema" options={temas} selected={filterTemas} onChange={setFilterTemas} />
                 <MultiSelect id="uo" label="Unid. Orçamentária" options={unidadesOrcamentarias} selected={filterUOs} onChange={setFilterUOs} />
                 <MultiSelect id="sit" label="Situação" options={situacoes} selected={filterSituacoes} onChange={setFilterSituacoes} />
@@ -1233,6 +1282,7 @@ export default function App() {
               </div>
             </div>
 
+            {currentView !== 'eleitoral' && (
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               <div className="flex items-center border border-slate-200 rounded-xs bg-slate-50/70">
                 <select
@@ -1257,7 +1307,7 @@ export default function App() {
                 )}
               </div>
 
-              {currentView !== 'dashboard' && (
+              {currentView !== 'eleitoral' && (
                 <div className="flex items-center gap-1.5">
                   <div className="flex border border-slate-200 rounded-xs overflow-hidden bg-slate-50/70">
                     <button
@@ -1318,7 +1368,19 @@ export default function App() {
                 </button>
               </div>
             </div>
+            )}
           </div>
+        )}
+
+        {(currentView === 'list' || currentView === 'eleitoral') && eleitoral && cruz && (
+          <BarraEleitoral
+            eleitoral={eleitoral}
+            cruz={cruz}
+            cfg={eleitoralCfg}
+            setCfg={setEleitoralCfg}
+            resultadosSel={filterResultados}
+            setResultadosSel={setFilterResultados}
+          />
         )}
       </header>
     );
@@ -2242,377 +2304,6 @@ export default function App() {
     );
   };
 
-  const DashboardView = () => {
-    const [hoveredMuni, setHoveredMuni] = useState(null);
-    const [mapMetric, setMapMetric] = useState('valor');
-
-    const totalGlobal = filteredAndSortedEmendas.reduce((acc, em) => acc + parseCurrency(em.TOTAL), 0);
-    const totalPagoGlobal = filteredAndSortedEmendas.reduce((acc, em) => acc + parseCurrency(em.PAGO), 0);
-    const totalCountGlobal = filteredAndSortedEmendas.length;
-
-    const emendasPorModalidade = filteredAndSortedEmendas.reduce((acc, em) => {
-      const mod = em.MODALIDADE || 'N/A';
-      if (!acc[mod]) acc[mod] = { valor: 0, count: 0 };
-      acc[mod].valor += parseCurrency(em.TOTAL);
-      acc[mod].count += 1;
-      return acc;
-    }, {});
-    const modalidadeData = Object.keys(emendasPorModalidade)
-      .map(mod => ({ mod, valor: emendasPorModalidade[mod].valor, count: emendasPorModalidade[mod].count }))
-      .sort((a, b) => b.valor - a.valor);
-
-    const emendasPorAno = filteredAndSortedEmendas.reduce((acc, em) => {
-      const ano = em.ANO || 'N/A';
-      if (!acc[ano]) acc[ano] = { valor: 0, count: 0 };
-      acc[ano].valor += parseCurrency(em.TOTAL);
-      acc[ano].count += 1;
-      return acc;
-    }, {});
-    const timelineData = Object.keys(emendasPorAno).sort().map(ano => ({
-      ano,
-      valor: emendasPorAno[ano].valor,
-      count: emendasPorAno[ano].count
-    }));
-
-    const emendasPorRegiao = filteredAndSortedEmendas.reduce((acc, em) => {
-      const regiao = em.REGIÃO || 'N/A';
-      if (!acc[regiao]) acc[regiao] = { valor: 0, count: 0 };
-      acc[regiao].valor += parseCurrency(em.TOTAL);
-      acc[regiao].count += 1;
-      return acc;
-    }, {});
-    const regiaoData = Object.keys(emendasPorRegiao)
-      .map(regiao => ({
-        regiao,
-        valor: emendasPorRegiao[regiao].valor,
-        count: emendasPorRegiao[regiao].count
-      }))
-      .sort((a, b) => b.valor - a.valor);
-
-    const emendasPorMuni = useMemo(() => {
-      const map = {};
-      filteredAndSortedEmendas.forEach(em => {
-        const mName = normalizeStr(em['MUNICÍPIO']);
-        if (mName) {
-          if (!map[mName]) map[mName] = { valor: 0, count: 0 };
-          map[mName].valor += parseCurrency(em.TOTAL);
-          map[mName].count += 1;
-        }
-      });
-      return map;
-    }, [filteredAndSortedEmendas]);
-
-    const getMuniColor = (muniStats) => {
-      if (!muniStats || muniStats.count === 0) return '#ffffff';
-
-      if (mapMetric === 'quantidade') {
-        const qtd = muniStats.count;
-        if (qtd <= 2) return '#fcd34d';
-        if (qtd <= 5) return '#0369a1';
-        return '#be123c';
-      }
-
-      const val = muniStats.valor;
-      if (!val || val === 0) return '#ffffff';
-      if (val < 300000) return '#fcd34d';
-      if (val < 800000) return '#0369a1';
-      return '#be123c';
-    };
-
-    const renderMap = () => {
-      if (!mapGeoJson) return <div className="p-8 text-center font-medium text-slate-500">Carregando Mapa...</div>;
-
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      mapGeoJson.features.forEach(f => {
-        const processRings = (rings) => {
-          rings.forEach(ring => ring.forEach(coord => {
-            if (coord[0] < minX) minX = coord[0];
-            if (coord[0] > maxX) maxX = coord[0];
-            if (coord[1] < minY) minY = coord[1];
-            if (coord[1] > maxY) maxY = coord[1];
-          }));
-        };
-        if (f.geometry.type === 'Polygon') processRings(f.geometry.coordinates);
-        else if (f.geometry.type === 'MultiPolygon') f.geometry.coordinates.forEach(processRings);
-      });
-
-      const mapWidth = 800; const mapHeight = 600;
-      const scaleX = mapWidth / (maxX - minX);
-      const scaleY = mapHeight / (maxY - minY);
-      const scale = Math.min(scaleX, scaleY) * 0.95;
-
-      const offsetX = (mapWidth - (maxX - minX) * scale) / 2;
-      const offsetY = (mapHeight - (maxY - minY) * scale) / 2;
-
-      const project = (coord) => {
-        const x = (coord[0] - minX) * scale + offsetX;
-        const y = mapHeight - ((coord[1] - minY) * scale) - offsetY;
-        return `${x},${y}`;
-      };
-
-      const generatePath = (geometry) => {
-        const createString = (rings) => rings.map(ring => "M" + ring.map(coord => project(coord)).join("L") + "Z").join(" ");
-        if (geometry.type === 'Polygon') return createString(geometry.coordinates);
-        if (geometry.type === 'MultiPolygon') return geometry.coordinates.map(createString).join(" ");
-        return "";
-      };
-
-      return (
-        <svg
-          viewBox={`0 0 ${mapWidth} ${mapHeight}`}
-          className="w-full h-auto select-none"
-          onClick={() => setHoveredMuni(null)}
-        >
-          {mapGeoJson.features.map((feature, i) => {
-            const mName = normalizeStr(feature.properties.name);
-            const stats = emendasPorMuni[mName] || { valor: 0, count: 0 };
-            return (
-              <path
-                key={i}
-                d={generatePath(feature.geometry)}
-                fill={getMuniColor(stats)}
-                stroke="#334155"
-                strokeWidth="0.75"
-                className="hover:stroke-[2.2px] transition-all cursor-pointer relative"
-                onMouseEnter={(e) => {
-                  setHoveredMuni({
-                    name: feature.properties.name,
-                    val: stats.valor,
-                    count: stats.count,
-                    x: e.clientX,
-                    y: e.clientY,
-                    isTouch: false
-                  });
-                }}
-                onMouseMove={(e) => {
-                  setHoveredMuni(prev => prev && !prev.isTouch ? {
-                    ...prev,
-                    x: e.clientX,
-                    y: e.clientY
-                  } : prev);
-                }}
-                onMouseLeave={() => {
-                  setHoveredMuni(prev => (prev && !prev.isTouch ? null : prev));
-                }}
-                onTouchStart={(e) => {
-                  e.stopPropagation();
-                  const touch = e.touches && e.touches[0];
-                  setHoveredMuni({
-                    name: feature.properties.name,
-                    val: stats.valor,
-                    count: stats.count,
-                    x: touch ? touch.clientX : 180,
-                    y: touch ? touch.clientY : 240,
-                    isTouch: true
-                  });
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (stats.count > 0) openEntityFicha('municipio', feature.properties.name);
-                }}
-              />
-            );
-          })}
-        </svg>
-      );
-    };
-
-    return (
-      <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-4 animate-in fade-in print:w-full print:max-w-none print:m-0 print:p-0">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 print:grid-cols-1 print:gap-4">
-          <div className="lg:col-span-1 space-y-5">
-            <div className="bg-amber-200/90 border border-slate-400 p-4 shadow-xs print:shadow-none flex flex-col justify-center">
-              <div className="flex justify-between items-center border-b border-slate-500/40 pb-2 mb-2.5">
-                <p className="text-slate-900 font-bold uppercase text-xs tracking-wider">
-                  Total no Filtro
-                </p>
-                <span className="bg-white border border-slate-400 px-2 py-0.5 text-[11px] font-bold text-rose-700 uppercase">
-                  {totalCountGlobal} {totalCountGlobal === 1 ? 'emenda' : 'emendas'}
-                </span>
-              </div>
-              <h2 className="text-2xl xl:text-3xl font-black text-slate-900 break-words leading-none">
-                {formatCurrency(totalGlobal)}
-              </h2>
-              <div className="mt-2.5 pt-2 border-t border-slate-500/30 flex justify-between items-baseline">
-                <span className="text-[11px] font-semibold uppercase text-slate-800">Total Pago:</span>
-                <span className="text-sm font-bold text-sky-900">{formatCurrency(totalPagoGlobal)}</span>
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-300 p-4 shadow-xs print:shadow-none">
-              <p className="text-slate-900 font-bold uppercase text-xs tracking-wider border-b border-slate-200 pb-2 mb-3.5">
-                Por Modalidade
-              </p>
-              <div className="space-y-3">
-                {modalidadeData.length > 0 ? modalidadeData.map((d) => {
-                  const maxVal = Math.max(...modalidadeData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div key={d.mod} className="cursor-pointer group" onClick={() => openEntityFicha('modalidade', d.mod)}>
-                      <div className="flex justify-between items-baseline text-xs font-semibold uppercase mb-1 text-slate-800 group-hover:text-rose-700">
-                        <span className="truncate pr-2">{d.mod}</span>
-                        <span className="whitespace-nowrap text-[11px]">
-                          <strong className="text-rose-700">{d.count} {d.count === 1 ? 'emenda' : 'emendas'}</strong> • {formatCurrency(d.valor)}
-                        </span>
-                      </div>
-                      <div className="h-3.5 w-full bg-slate-100 border border-slate-300">
-                        <div className="h-full bg-rose-700" style={{ width: `${pct}%` }}></div>
-                      </div>
-                    </div>
-                  );
-                }) : <p className="text-xs text-slate-400 uppercase">Sem dados.</p>}
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-300 p-4 shadow-xs print:shadow-none">
-              <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-3.5">
-                <p className="text-slate-900 font-bold uppercase text-xs tracking-wider">
-                  Todas as Regiões ({regiaoData.length})
-                </p>
-                <span className="text-[10px] font-semibold uppercase text-slate-400">Qtd • Valor</span>
-              </div>
-              <div className="space-y-2.5">
-                {regiaoData.length > 0 ? regiaoData.map((d) => {
-                  const maxVal = Math.max(...regiaoData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 4);
-                  return (
-                    <div key={d.regiao} className="cursor-pointer group" onClick={() => openEntityFicha('regiao', d.regiao)}>
-                      <div className="flex justify-between items-baseline text-[11px] font-semibold uppercase mb-1 text-slate-800 group-hover:text-sky-700">
-                        <span className="truncate pr-2" title={d.regiao}>{d.regiao}</span>
-                        <span className="whitespace-nowrap">
-                          <strong className="text-sky-700">{d.count} {d.count === 1 ? 'emenda' : 'emendas'}</strong> • {formatCurrency(d.valor)}
-                        </span>
-                      </div>
-                      <div className="h-3 w-full bg-slate-100 border border-slate-300">
-                        <div className="h-full bg-sky-700" style={{ width: `${pct}%` }}></div>
-                      </div>
-                    </div>
-                  );
-                }) : <p className="text-xs text-slate-400 uppercase">Sem dados.</p>}
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-300 p-4 shadow-xs print:shadow-none">
-              <p className="text-slate-900 font-bold uppercase text-xs tracking-wider border-b border-slate-200 pb-2 mb-3.5">
-                Evolução Anual
-              </p>
-              <div className="flex items-end h-36 space-x-2 border-b border-l border-slate-300 p-2">
-                {timelineData.length > 0 ? timelineData.map((d) => {
-                  const maxVal = Math.max(...timelineData.map(r => r.valor));
-                  const pct = Math.max((d.valor / maxVal) * 100, 5);
-                  return (
-                    <div
-                      key={d.ano}
-                      onClick={() => openEntityFicha('ano', d.ano)}
-                      className="flex-1 flex flex-col items-center group relative h-full justify-end cursor-pointer"
-                    >
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-8 bg-slate-900 text-white text-[10px] font-medium px-2 py-0.5 pointer-events-none whitespace-nowrap z-10 text-center">
-                        {d.count} {d.count === 1 ? 'emenda' : 'emendas'} • {formatCurrency(d.valor)}
-                      </div>
-                      <div className="w-full bg-rose-700 border border-slate-600 transition-all group-hover:bg-amber-300" style={{ height: `${pct}%` }}></div>
-                      <span className="text-[10px] font-bold mt-1.5 text-slate-800">{d.ano}</span>
-                      <span className="text-[9px] text-slate-500">{d.count} em.</span>
-                    </div>
-                  );
-                }) : <p className="text-xs text-slate-400 uppercase self-center w-full text-center">Sem dados.</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 bg-white border border-slate-300 shadow-xs print:shadow-none flex flex-col relative overflow-hidden print:break-before-page self-start">
-            <div className="bg-sky-700 border-b border-slate-300 p-3 flex flex-wrap justify-between items-center gap-3 z-10 print:bg-white print:border-b">
-              <p className="text-white font-bold uppercase text-xs sm:text-sm tracking-wider flex items-center print:text-slate-900">
-                <MapPinIcon className="h-4 w-4 mr-1.5" /> Mapa de Santa Catarina
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex border border-slate-800 bg-white rounded-xs overflow-hidden print:hidden">
-                  <button
-                    onClick={() => setMapMetric('valor')}
-                    className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-colors border-r border-slate-300 ${
-                      mapMetric === 'valor' ? 'bg-amber-300 text-slate-900' : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    Por Valor (R$)
-                  </button>
-                  <button
-                    onClick={() => setMapMetric('quantidade')}
-                    className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-colors ${
-                      mapMetric === 'quantidade' ? 'bg-amber-300 text-slate-900' : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    Por Quantidade (Nº)
-                  </button>
-                </div>
-
-                {mapMetric === 'valor' ? (
-                  <div className="flex space-x-2 text-[10px] font-semibold uppercase text-white items-center print:text-slate-900">
-                    <div className="w-3 h-3 bg-amber-300 border border-slate-900"></div> <span>Até 300k</span>
-                    <div className="w-3 h-3 bg-sky-700 border border-white ml-1.5"></div> <span>300k–800k</span>
-                    <div className="w-3 h-3 bg-rose-700 border border-white ml-1.5"></div> <span>+800k</span>
-                  </div>
-                ) : (
-                  <div className="flex space-x-2 text-[10px] font-semibold uppercase text-white items-center print:text-slate-900">
-                    <div className="w-3 h-3 bg-amber-300 border border-slate-900"></div> <span>1–2 em.</span>
-                    <div className="w-3 h-3 bg-sky-700 border border-white ml-1.5"></div> <span>3–5 em.</span>
-                    <div className="w-3 h-3 bg-rose-700 border border-white ml-1.5"></div> <span>6+ em.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-2 sm:p-4 bg-white relative flex flex-col items-center justify-center">
-              {renderMap()}
-
-              {hoveredMuni && (
-                <div
-                  className={`${
-                    hoveredMuni.isTouch
-                      ? 'sticky bottom-2 left-2 right-2 w-full max-w-sm mx-auto mt-2'
-                      : 'fixed pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-12px]'
-                  } bg-white border border-slate-800 p-3 shadow-md z-50 print:hidden`}
-                  style={!hoveredMuni.isTouch ? { left: hoveredMuni.x, top: hoveredMuni.y } : {}}
-                >
-                  <div className="flex justify-between items-start gap-3">
-                    <p className="font-bold text-rose-700 text-xs sm:text-sm uppercase">{hoveredMuni.name}</p>
-                    {hoveredMuni.isTouch && (
-                      <button
-                        onClick={() => setHoveredMuni(null)}
-                        className="text-slate-400 hover:text-slate-800 p-0.5"
-                      >
-                        <XIcon className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {hoveredMuni.count > 0 ? (
-                    <div className="mt-1 space-y-0.5">
-                      <p className="font-semibold text-xs text-sky-800">
-                        Quantidade: {hoveredMuni.count} {hoveredMuni.count === 1 ? 'emenda' : 'emendas'}
-                      </p>
-                      <p className="font-bold text-xs sm:text-sm text-slate-900">
-                        Valor Total: {formatCurrency(hoveredMuni.val)}
-                      </p>
-                      {hoveredMuni.isTouch && (
-                        <button
-                          onClick={() => openEntityFicha('municipio', hoveredMuni.name)}
-                          className="mt-2 w-full bg-amber-300 text-slate-900 border border-slate-700 py-1 px-2 text-[10px] font-bold uppercase text-center"
-                        >
-                          Abrir Ficha de {hoveredMuni.name}
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 mt-1">Nenhuma emenda no filtro atual</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ============================================================================
   // FICHA DE EMENDA (DetailView) COM DATA DE PAGAMENTO EM DESTAQUE
   // ============================================================================
@@ -2955,7 +2646,6 @@ export default function App() {
       <UnifiedTopBar />
       <main>
         {currentView === 'list' && <ListView />}
-        {currentView === 'dashboard' && <DashboardView />}
         {currentView === 'updates' && <UpdatesHistoryView />}
         {currentView === 'entity' && <EntityProfileView />}
         {(currentView === 'detail' || currentView === 'edit') && <DetailView />}
@@ -2965,7 +2655,18 @@ export default function App() {
             status={eleitoralStatus}
             erro={eleitoralErro}
             recarregar={recarregarEleitoral}
-            emendas={normalizedEmendas}
+            cruz={cruz}
+            cfg={eleitoralCfg}
+            setCfg={setEleitoralCfg}
+            resultadosSel={filterResultados}
+            setResultadosSel={setFilterResultados}
+            emendasFiltradas={filteredAndSortedEmendas}
+            resumoFiltros={resumoFiltros}
+            nFiltros={
+              (searchTerm ? 1 : 0) + filterArticuladores.length + filterMunicipios.length + filterRegioes.length +
+              filterModalidades.length + filterEntidades.length + filterTemas.length + filterUOs.length +
+              filterSituacoes.length + filterAnos.length + filterAssociacoes.length
+            }
             mapGeoJson={mapGeoJson}
             openEntityFicha={openEntityFicha}
             exportRows={exportRowsToCSV}
