@@ -3,6 +3,7 @@ import {
   useEleitoralData, EleitoralModule, EleitoralPerfil, EleitoralStatus, VotosEvolucao, textoEvolucaoMunicipio,
   BarraEleitoral, calcularCruzamento, CFG_PADRAO, RESULTADOS, norm as chaveMun, tituloMunicipio,
 } from './eleitoral.jsx';
+import { useAgendaData, AgendaModule, AgendaPerfil, AgendaStatus } from './agenda.jsx';
 
 const Icon = ({ path, className = "w-4 h-4", onClick, size, style }) => (
   <svg
@@ -47,6 +48,7 @@ const PrinterIcon = (p) => <Icon {...p} path={<><polyline points="6 9 6 2 18 2 1
 const FilterIcon = (p) => <Icon {...p} path={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></>} />;
 const BellIcon = (p) => <Icon {...p} path={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>} />;
 const VoteIcon = (p) => <Icon {...p} path={<><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></>} />;
+const CalendarIcon = (p) => <Icon {...p} path={<><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></>} />;
 const ClockIcon = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />;
 
 function parseCSV(text) {
@@ -360,6 +362,9 @@ export default function App() {
   // Dados eleitorais (vêm de /api/eleitoral; nada sensível no front-end)
   const { eleitoral, status: eleitoralStatus, erro: eleitoralErro, recarregar: recarregarEleitoral } = useEleitoralData();
 
+  // Dados de agendas (vêm de /api/agenda; nada sensível no front-end)
+  const { agenda, status: agendaStatus, erro: agendaErro, recarregar: recarregarAgenda } = useAgendaData();
+
   useEffect(() => {
     const handleClickOutside = () => setOpenDropdown(null);
     document.addEventListener('click', handleClickOutside);
@@ -392,7 +397,12 @@ export default function App() {
     }));
   }, [emendas, updateHistory]);
 
-  const articuladores = useMemo(() => [...new Set(normalizedEmendas.map(e => e.ARTICULADOR).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [normalizedEmendas]);
+  const articuladores = useMemo(() => {
+    const set = new Set(normalizedEmendas.map(e => e.ARTICULADOR).filter(Boolean));
+    if (agenda) agenda.articuladores.forEach(a => set.add(a));
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [normalizedEmendas, agenda]);
+
   // Município/Região: união das emendas com a planilha de votos (cidades sem emenda também podem ser filtradas)
   const municipios = useMemo(() => {
     const mapa = new Map();
@@ -924,6 +934,7 @@ export default function App() {
       return `Emenda #${selectedEmenda['NÚMERO DA EMENDA']}`;
     }
     if (currentView === 'eleitoral') return 'Inteligência Eleitoral';
+    if (currentView === 'agenda') return 'Agendas × Emendas × Votos';
     if (currentView === 'settings') return 'Configurações';
     return 'Painel';
   };
@@ -1079,13 +1090,22 @@ export default function App() {
               {(eleitoral || eleitoralStatus === 'loading') && (
                 <button
                   onClick={() => { setCurrentView('eleitoral'); setSelectedEntityFicha(null); }}
-                  className={`px-2.5 py-1 flex items-center text-xs font-medium border-l border-slate-300 transition-colors ${
+                  className={`px-2.5 py-1 flex items-center text-xs font-medium border-r border-slate-300 transition-colors ${
                     currentView === 'eleitoral' ? 'bg-sky-700 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <VoteIcon className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Eleitoral</span>
                 </button>
               )}
+              <button
+                onClick={() => { setCurrentView('agenda'); setSelectedEntityFicha(null); }}
+                className={`px-2.5 py-1 flex items-center text-xs font-medium transition-colors ${
+                  currentView === 'agenda' ? 'bg-pink-600 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                title="Cruzamento de Agendas × Emendas × Votos (Matriz 3×3)"
+              >
+                <CalendarIcon className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Agendas</span>
+              </button>
             </div>
 
             {isAdmin && (
@@ -1232,7 +1252,7 @@ export default function App() {
           </div>
         </div>
 
-        {(currentView === 'list' || currentView === 'eleitoral' || currentView === 'entity') && (
+        {(currentView === 'list' || currentView === 'eleitoral' || currentView === 'agenda' || currentView === 'entity') && (
           <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-1.5 bg-white">
             <div className="flex flex-wrap items-center gap-1.5 flex-1">
               <div className="relative w-36 sm:w-44">
@@ -1282,7 +1302,7 @@ export default function App() {
               </div>
             </div>
 
-            {currentView !== 'eleitoral' && (
+            {currentView !== 'eleitoral' && currentView !== 'agenda' && (
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               <div className="flex items-center border border-slate-200 rounded-xs bg-slate-50/70">
                 <select
@@ -1307,46 +1327,44 @@ export default function App() {
                 )}
               </div>
 
-              {currentView !== 'eleitoral' && (
-                <div className="flex items-center gap-1.5">
-                  <div className="flex border border-slate-200 rounded-xs overflow-hidden bg-slate-50/70">
-                    <button
-                      onClick={() => setViewMode('table')}
-                      className={`px-2 py-1 flex items-center text-xs border-r border-slate-200 transition-colors ${
-                        viewMode === 'table' ? 'bg-slate-800 text-white font-medium' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      title="Visualização em Lista (na íntegra)"
-                    >
-                      <ListIcon className="w-3.5 h-3.5 mr-1" /> Lista
-                    </button>
-                    <button
-                      onClick={() => setViewMode('cards')}
-                      className={`px-2 py-1 flex items-center text-xs transition-colors ${
-                        viewMode === 'cards' ? 'bg-slate-800 text-white font-medium' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      title="Visualização em Cards (paginada)"
-                    >
-                      <GridIcon className="w-3.5 h-3.5 mr-1" /> Card
-                    </button>
-                  </div>
-
-                  {viewMode === 'cards' && (
-                    <select
-                      value={cardsPerPage}
-                      onChange={(e) => setCardsPerPage(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                      className="px-2 py-1 text-xs border border-slate-200 rounded-xs bg-slate-50/70 text-slate-700 focus:outline-none cursor-pointer"
-                      title="Quantidade de cards por página"
-                    >
-                      <option value={5}>5 / pág</option>
-                      <option value={25}>25 / pág</option>
-                      <option value={50}>50 / pág</option>
-                      <option value={100}>100 / pág</option>
-                      <option value={200}>200 / pág</option>
-                      <option value="all">Todas</option>
-                    </select>
-                  )}
+              <div className="flex items-center gap-1.5">
+                <div className="flex border border-slate-200 rounded-xs overflow-hidden bg-slate-50/70">
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={`px-2 py-1 flex items-center text-xs border-r border-slate-200 transition-colors ${
+                      viewMode === 'table' ? 'bg-slate-800 text-white font-medium' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title="Visualização em Lista (na íntegra)"
+                  >
+                    <ListIcon className="w-3.5 h-3.5 mr-1" /> Lista
+                  </button>
+                  <button
+                    onClick={() => setViewMode('cards')}
+                    className={`px-2 py-1 flex items-center text-xs transition-colors ${
+                      viewMode === 'cards' ? 'bg-slate-800 text-white font-medium' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title="Visualização em Cards (paginada)"
+                  >
+                    <GridIcon className="w-3.5 h-3.5 mr-1" /> Card
+                  </button>
                 </div>
-              )}
+
+                {viewMode === 'cards' && (
+                  <select
+                    value={cardsPerPage}
+                    onChange={(e) => setCardsPerPage(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                    className="px-2 py-1 text-xs border border-slate-200 rounded-xs bg-slate-50/70 text-slate-700 focus:outline-none cursor-pointer"
+                    title="Quantidade de cards por página"
+                  >
+                    <option value={5}>5 / pág</option>
+                    <option value={25}>25 / pág</option>
+                    <option value={50}>50 / pág</option>
+                    <option value={100}>100 / pág</option>
+                    <option value={200}>200 / pág</option>
+                    <option value="all">Todas</option>
+                  </select>
+                )}
+              </div>
 
               <div className="flex items-center border border-slate-200 rounded-xs bg-slate-50/70 overflow-hidden">
                 <span className="px-2 py-1 text-[11px] text-slate-500 border-r border-slate-200 select-none">
@@ -1372,7 +1390,7 @@ export default function App() {
           </div>
         )}
 
-        {(currentView === 'list' || currentView === 'eleitoral') && eleitoral && cruz && (
+        {(currentView === 'list' || currentView === 'eleitoral' || currentView === 'agenda') && eleitoral && cruz && (
           <BarraEleitoral
             eleitoral={eleitoral}
             cruz={cruz}
@@ -2181,6 +2199,14 @@ export default function App() {
             openEntityFicha={openEntityFicha}
           />
 
+          <AgendaPerfil
+            type={type}
+            value={value}
+            agenda={agenda}
+            eleitoral={eleitoral}
+            openEntityFicha={openEntityFicha}
+          />
+
           <div className="p-4">
             <h2 className="text-xs sm:text-sm font-bold uppercase text-slate-800 tracking-wider mb-3 flex items-center">
               <span className="w-2 h-4 bg-rose-700 mr-2"></span>
@@ -2581,10 +2607,11 @@ export default function App() {
             <div className="bg-amber-50 border border-amber-300 text-slate-800 p-4 flex items-start">
               <AlertTriangleIcon className="h-5 w-5 mr-3 flex-shrink-0 text-rose-700" />
               <p className="text-xs sm:text-sm font-medium">
-                Modo de Segurança Máxima Ativado. A URL da planilha Google é gerenciada exclusivamente pelo Servidor (Backend).
+                Modo de Segurança Máxima Ativado. As URLs e tokens das planilhas Google são gerenciados exclusivamente pelo Servidor (Backend).
               </p>
             </div>
             <EleitoralStatus eleitoral={eleitoral} status={eleitoralStatus} erro={eleitoralErro} recarregar={recarregarEleitoral} />
+            <AgendaStatus agenda={agenda} status={agendaStatus} erro={agendaErro} recarregar={recarregarAgenda} />
             <div className="border border-slate-200 p-5 bg-white">
               <h3 className="text-sm font-bold uppercase text-sky-700 border-b border-slate-200 pb-2 mb-4 flex items-center">
                 <UploadCloudIcon className="h-4 w-4 mr-2" /> Importação CSV Manual
@@ -2670,6 +2697,27 @@ export default function App() {
             mapGeoJson={mapGeoJson}
             openEntityFicha={openEntityFicha}
             exportRows={exportRowsToCSV}
+          />
+        )}
+        {currentView === 'agenda' && (
+          <AgendaModule
+            agenda={agenda}
+            status={agendaStatus}
+            erro={agendaErro}
+            recarregar={recarregarAgenda}
+            eleitoral={eleitoral}
+            emendas={filteredAndSortedEmendas}
+            emendasTodas={normalizedEmendas}
+            cruz={cruz}
+            mapGeoJson={mapGeoJson}
+            openEntityFicha={openEntityFicha}
+            exportRows={exportRowsToCSV}
+            filtrosGlobais={{
+              municipios: filterMunicipios,
+              regioes: filterRegioes,
+              associacoes: filterAssociacoes,
+              articuladores: filterArticuladores,
+            }}
           />
         )}
         {currentView === 'settings' && <SettingsView />}
