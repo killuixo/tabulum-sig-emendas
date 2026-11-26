@@ -4,8 +4,9 @@ import {
   norm as chaveMun, tituloMunicipio,
 } from './eleitoral.jsx';
 import { useAgendaData, AgendaPerfil, AgendaStatus } from './agenda.jsx';
+import { useLeadsData, LeadsPerfil, LeadsStatus, LeadsListaView } from './leads.jsx';
 import {
-  FILTROS_PADRAO, PERIODOS_AGENDA, RESULTADOS_EMENDAS, RESULTADOS_AGENDAS, QUADRANTES_4,
+  FILTROS_PADRAO, PERIODOS_AGENDA, RESULTADOS_EMENDAS, RESULTADOS_AGENDAS, RESULTADOS_LEADS, QUADRANTES_4,
   calcularPainelUnificado, fmtInt,
 } from './motorUnificado.js';
 import {
@@ -33,6 +34,7 @@ const SearchIcon = (p) => <Icon {...p} path={<><circle cx="11" cy="11" r="8"/><p
 const MapPinIcon = (p) => <Icon {...p} path={<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></>} />;
 const MapIcon = (p) => <Icon {...p} path={<><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></>} />;
 const UserIcon = (p) => <Icon {...p} path={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>} />;
+const UsersIcon = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>} />;
 const TagIcon = (p) => <Icon {...p} path={<><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></>} />;
 const BuildingIcon = (p) => <Icon {...p} path={<><rect width="16" height="20" x="4" y="2" rx="1"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></>} />;
 const LayersIcon = (p) => <Icon {...p} path={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>} />;
@@ -459,7 +461,7 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState('admin');
   const [mapGeoJson, setMapGeoJson] = useState(null);
 
-  // Telas principais: 'inicio' | 'municipios' | 'emendas' | 'agendas' | 'updates' | 'entity' | 'detail' | 'edit' | 'settings'
+  // Telas principais: 'inicio' | 'municipios' | 'emendas' | 'agendas' | 'leads' | 'updates' | 'entity' | 'detail' | 'edit' | 'settings'
   const [currentView, setCurrentView] = useState('inicio');
   const [viewMode, setViewMode] = useState('table');
   const [selectedEmenda, setSelectedEmenda] = useState(null);
@@ -486,6 +488,7 @@ export default function App() {
   // Fontes seguras de servidor (sem URLs ou tokens no código)
   const { eleitoral, status: eleitoralStatus, erro: eleitoralErro, recarregar: recarregarEleitoral } = useEleitoralData();
   const { agenda, status: agendaStatus, erro: agendaErro, recarregar: recarregarAgenda } = useAgendaData();
+  const { leads, status: leadsStatus, erro: leadsErro, recarregar: recarregarLeads } = useLeadsData();
 
   useEffect(() => {
     const handleClickOutside = () => setOpenDropdown(null);
@@ -554,21 +557,24 @@ export default function App() {
       uos: [...new Set(normalizedEmendas.map((e) => e['UNIDADE ORÇAMENTÁRIA']).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
       situacoes: [...new Set(normalizedEmendas.map((e) => e.SITUAÇÃO).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
       anosEmenda: [...new Set(normalizedEmendas.map((e) => String(e.ANO || '').trim()).filter(Boolean))].sort(),
+      temasLeads: leads ? leads.temas : [],
+      origensLeads: leads ? leads.origens : [],
     };
-  }, [normalizedEmendas, eleitoral, agenda]);
+  }, [normalizedEmendas, eleitoral, agenda, leads]);
 
-  // Motor unificado (alimenta Início, Mapa Único, Municípios, Emendas e Agendas com os MESMOS filtros)
+  // Motor unificado (alimenta Início, Mapa Único, Municípios, Emendas, Agendas e Leads com os MESMOS filtros)
   const dadosUnificados = useMemo(
     () =>
       calcularPainelUnificado({
         emendasTodas: normalizedEmendas,
         eleitoral,
         agenda,
+        leads,
         filtros,
         modoMapa,
         metricaX,
       }),
-    [normalizedEmendas, eleitoral, agenda, filtros, modoMapa, metricaX]
+    [normalizedEmendas, eleitoral, agenda, leads, filtros, modoMapa, metricaX]
   );
 
   const emendasOrdenadas = useMemo(
@@ -692,6 +698,7 @@ export default function App() {
   const recarregarTudo = async () => {
     recarregarEleitoral();
     recarregarAgenda();
+    recarregarLeads();
     try {
       const response = await fetch('/api/emendas');
       if (response.ok) {
@@ -712,6 +719,7 @@ export default function App() {
       processarPayloadServidor(newData, emendas, updateHistory);
       recarregarEleitoral();
       recarregarAgenda();
+      recarregarLeads();
       alert('Sincronização concluída com sucesso!');
     } catch (error) {
       console.error('Erro ao sincronizar com proxy interno:', error);
@@ -985,6 +993,7 @@ export default function App() {
     filtros.temas.length +
     filtros.uos.length +
     (filtros.incluirExecDireta ? 1 : 0);
+  const contLeads = (filtros.temasLeads || []).length + (filtros.origensLeads || []).length;
   const contEleicoes =
     (filtros.baseKey ? 1 : 0) + (filtros.compKey ? 1 : 0) + (filtros.criterio !== 'media' ? 1 : 0);
 
@@ -1008,14 +1017,17 @@ export default function App() {
     filtros.temas.forEach((v) => list.push({ id: `tem_${v}`, label: `Tema: ${v}`, onRemove: () => setFiltros({ temas: filtros.temas.filter((x) => x !== v) }) }));
     filtros.uos.forEach((v) => list.push({ id: `uo_${v}`, label: `Unid. Orç.: ${v}`, onRemove: () => setFiltros({ uos: filtros.uos.filter((x) => x !== v) }) }));
     if (filtros.incluirExecDireta) list.push({ id: 'exec', label: 'Inclui Execução Direta', onRemove: () => setFiltros({ incluirExecDireta: false }) });
+    (filtros.temasLeads || []).forEach((v) => list.push({ id: `tl_${v}`, label: `Leads (Tema): ${v}`, onRemove: () => setFiltros({ temasLeads: filtros.temasLeads.filter((x) => x !== v) }) }));
+    (filtros.origensLeads || []).forEach((v) => list.push({ id: `ol_${v}`, label: `Leads (Campanha): ${v.slice(0, 35)}`, onRemove: () => setFiltros({ origensLeads: filtros.origensLeads.filter((x) => x !== v) }) }));
     filtros.resEmenda.forEach((k) => list.push({ id: `re_${k}`, label: `Emendas: ${RESULTADOS_EMENDAS[k]?.label || k}`, onRemove: () => setFiltros({ resEmenda: filtros.resEmenda.filter((x) => x !== k) }) }));
     filtros.resAgenda.forEach((k) => list.push({ id: `ra_${k}`, label: `Agendas: ${RESULTADOS_AGENDAS[k]?.label || k}`, onRemove: () => setFiltros({ resAgenda: filtros.resAgenda.filter((x) => x !== k) }) }));
+    (filtros.resLeads || []).forEach((k) => list.push({ id: `rl_${k}`, label: `Leads: ${RESULTADOS_LEADS[k]?.label || k}`, onRemove: () => setFiltros({ resLeads: filtros.resLeads.filter((x) => x !== k) }) }));
     if (filtros.quadrante4) list.push({ id: 'q4', label: QUADRANTES_4[filtros.quadrante4]?.label || filtros.quadrante4, onRemove: () => setFiltros({ quadrante4: '' }) });
     return list;
   }, [filtros]);
 
   const temAlgumFiltro = Boolean(filtros.busca) || etiquetasAtivas.length > 0 || contEleicoes > 0;
-  const mostrarBarraFiltros = ['inicio', 'municipios', 'emendas', 'agendas'].includes(currentView);
+  const mostrarBarraFiltros = ['inicio', 'municipios', 'emendas', 'agendas', 'leads'].includes(currentView);
   const toggleDropdown = (id) => setOpenDropdown((prev) => (prev === id ? null : id));
 
   const toggleAnoAgendaCustom = (ano) => {
@@ -1734,7 +1746,16 @@ export default function App() {
             openEntityFicha={openEntityFicha}
           />
 
-          {/* Bloco 3: Cruzamento das Emendas */}
+          {/* Bloco 3: Base de Leads (Anonimizado) */}
+          <LeadsPerfil
+            type={type}
+            value={value}
+            leads={leads}
+            eleitoral={eleitoral}
+            openEntityFicha={openEntityFicha}
+          />
+
+          {/* Bloco 4: Cruzamento das Emendas */}
           {baseEntityEmendas.length > 0 && (
             <div className="p-4">
               <h2 className="text-xs sm:text-sm font-bold uppercase text-slate-800 tracking-wider mb-3 flex items-center">
@@ -2061,6 +2082,7 @@ export default function App() {
             </div>
             <EleitoralStatus eleitoral={eleitoral} status={eleitoralStatus} erro={eleitoralErro} recarregar={recarregarEleitoral} />
             <AgendaStatus agenda={agenda} status={agendaStatus} erro={agendaErro} recarregar={recarregarAgenda} />
+            <LeadsStatus leads={leads} status={leadsStatus} erro={leadsErro} recarregar={recarregarLeads} />
             <div className="border border-slate-200 p-5 bg-white">
               <h3 className="text-sm font-bold uppercase text-sky-700 border-b border-slate-200 pb-2 mb-4 flex items-center">
                 <UploadCloudIcon className="h-4 w-4 mr-2" /> Importação CSV Manual (Emendas)
@@ -2129,7 +2151,7 @@ export default function App() {
           <div className="w-1/3 bg-sky-500" />
         </div>
 
-        {/* Linha 1: Marca + 4 Telas Principais + Notificações/Admin */}
+        {/* Linha 1: Marca + 5 Telas Principais + Notificações/Admin */}
         <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
             <div className="flex items-center cursor-pointer group flex-shrink-0" onClick={resetToFrontPage} title="Voltar ao Início e limpar filtros">
@@ -2142,13 +2164,14 @@ export default function App() {
               <span className="font-extrabold text-base tracking-tight text-slate-900 whitespace-nowrap">TABULUM</span>
             </div>
 
-            {/* 4 Telas Principais */}
+            {/* 5 Telas Principais */}
             <nav className="flex border border-slate-300 rounded-xs overflow-hidden bg-slate-50">
               {[
                 { id: 'inicio', label: 'Início', icon: HomeIcon, cor: 'bg-pink-600 text-white' },
                 { id: 'municipios', label: 'Municípios', icon: MapPinIcon, cor: 'bg-sky-700 text-white' },
                 { id: 'emendas', label: 'Emendas', icon: TableIcon, cor: 'bg-slate-900 text-white' },
                 { id: 'agendas', label: 'Agendas', icon: CalendarIcon, cor: 'bg-amber-300 text-slate-900' },
+                { id: 'leads', label: 'Leads', icon: UsersIcon, cor: 'bg-sky-600 text-white' },
               ].map((tab, i) => {
                 const TabIcon = tab.icon;
                 const ativo = currentView === tab.id;
@@ -2269,7 +2292,7 @@ export default function App() {
                 <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Buscar cidade, emenda, agenda..."
+                  placeholder="Buscar cidade, emenda, agenda, lead..."
                   value={filtros.busca}
                   onChange={(e) => setFiltros({ busca: e.target.value })}
                   className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xs text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-pink-600 focus:bg-white"
@@ -2409,7 +2432,30 @@ export default function App() {
                 </div>
               </ClasseFiltroBotao>
 
-              {/* CLASSE 4: ELEIÇÕES */}
+              {/* CLASSE 4: LEADS */}
+              {leads && (
+                <ClasseFiltroBotao
+                  id="cls_leads"
+                  label="Leads"
+                  icon={UsersIcon}
+                  count={contLeads}
+                  corAtiva="bg-sky-50 border-sky-600 text-sky-900"
+                  isOpen={openDropdown === 'cls_leads'}
+                  onToggle={toggleDropdown}
+                  largura="w-[min(94vw,600px)]"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <span className="text-xs font-extrabold uppercase text-sky-900">Classe: Leads (Anonimizados)</span>
+                    <span className="text-[11px] font-semibold text-slate-500">{fmtInt(leads.totalValidos)} contatos válidos</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <SubclasseChecklist label="Tema (Leads)" options={opcoes.temasLeads} selected={filtros.temasLeads || []} onChange={(v) => setFiltros({ temasLeads: v })} placeholder="Buscar tema..." />
+                    <SubclasseChecklist label="Campanha / Origem" options={opcoes.origensLeads} selected={filtros.origensLeads || []} onChange={(v) => setFiltros({ origensLeads: v })} placeholder="Buscar campanha..." />
+                  </div>
+                </ClasseFiltroBotao>
+              )}
+
+              {/* CLASSE 5: ELEIÇÕES */}
               {nomesEleicoes.length > 0 && (
                 <ClasseFiltroBotao
                   id="cls_eleicoes"
@@ -2490,7 +2536,7 @@ export default function App() {
         )}
       </header>
 
-      {/* Atalhos rápidos de conversão (Emendas + Agendas) */}
+      {/* Atalhos rápidos de conversão (Emendas + Agendas + Leads) */}
       {mostrarBarraFiltros && eleitoral && (
         <BarraAtalhosConversao dados={dadosUnificados} filtros={filtros} setFiltros={setFiltros} />
       )}
@@ -2510,7 +2556,7 @@ export default function App() {
             openEntityFicha={openEntityFicha}
             irParaTela={(tela) => { setCurrentView(tela); setSelectedEntityFicha(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             recarregarTudo={recarregarTudo}
-            atualizando={eleitoralStatus === 'atualizando' || agendaStatus === 'atualizando'}
+            atualizando={eleitoralStatus === 'atualizando' || agendaStatus === 'atualizando' || leadsStatus === 'atualizando'}
           />
         )}
         {currentView === 'municipios' && (
@@ -2525,6 +2571,14 @@ export default function App() {
         {currentView === 'agendas' && (
           <AgendasListaView
             dados={dadosUnificados}
+            openEntityFicha={openEntityFicha}
+            exportRows={exportRowsToCSV}
+          />
+        )}
+        {currentView === 'leads' && (
+          <LeadsListaView
+            dados={dadosUnificados}
+            leads={leads}
             openEntityFicha={openEntityFicha}
             exportRows={exportRowsToCSV}
           />
