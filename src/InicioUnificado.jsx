@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { norm, tituloMunicipio, VotosEvolucao, textoEvolucaoMunicipio, BadgeRes } from './eleitoral.jsx';
+import { BadgeLeads } from './leads.jsx';
 import {
   fmtInt, fmtBRL, fmtBRLCompact, fmtHoras, fmtPct, fmtSigned, fmtSignedPct, fmtDataBr, dinheiroCsv,
-  MODOS_MAPA, METRICAS_ELEITORAIS, RESULTADOS_EMENDAS, RESULTADOS_AGENDAS, QUADRANTES_4, MATRIZ_3X3,
+  MODOS_MAPA, METRICAS_ELEITORAIS, RESULTADOS_EMENDAS, RESULTADOS_AGENDAS, RESULTADOS_LEADS, QUADRANTES_4, MATRIZ_3X3,
 } from './motorUnificado.js';
 
 /* ==========================================================================
@@ -218,7 +219,7 @@ function BarrasAnuais({ itens, cor = 'bg-pink-600' }) {
   );
 }
 
-/* ---------------- barra de atalhos de conversão (Emendas + Agendas) ------- */
+/* ----------- barra de atalhos de conversão (Emendas + Agendas + Leads) ---- */
 export function BarraAtalhosConversao({ dados, filtros, setFiltros }) {
   const [infoAberto, setInfoAberto] = useState(false);
   if (!dados || !dados.elBase || !dados.elComp) return null;
@@ -233,9 +234,15 @@ export function BarraAtalhosConversao({ dados, filtros, setFiltros }) {
     setFiltros({ resAgenda: atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k] });
   };
 
+  const toggleLeads = (k) => {
+    const atual = filtros.resLeads || [];
+    setFiltros({ resLeads: atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k] });
+  };
+
   const temAtalho =
     (filtros.resEmenda && filtros.resEmenda.length > 0) ||
     (filtros.resAgenda && filtros.resAgenda.length > 0) ||
+    (filtros.resLeads && filtros.resLeads.length > 0) ||
     Boolean(filtros.quadrante4);
 
   return (
@@ -268,7 +275,7 @@ export function BarraAtalhosConversao({ dados, filtros, setFiltros }) {
           })}
         </div>
 
-        {/* Linha 2: Conversão das Agendas + atalho Emenda sem visita + Explicação */}
+        {/* Linha 2: Conversão das Agendas + atalho Emenda sem visita */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-extrabold uppercase text-pink-700 mr-1 min-w-[118px]">
@@ -309,44 +316,95 @@ export function BarraAtalhosConversao({ dados, filtros, setFiltros }) {
             </button>
           </div>
 
-          <div className="flex items-center gap-3 relative">
-            {temAtalho && (
+          {!dados.temBaseLeads && (
+            <div className="flex items-center gap-3 relative">
+              {temAtalho && (
+                <button
+                  onClick={() => setFiltros({ resEmenda: [], resAgenda: [], resLeads: [], quadrante4: '' })}
+                  className="text-xs font-bold text-rose-700 hover:underline"
+                >
+                  Limpar atalhos
+                </button>
+              )}
               <button
-                onClick={() => setFiltros({ resEmenda: [], resAgenda: [], quadrante4: '' })}
-                className="text-xs font-bold text-rose-700 hover:underline"
+                onClick={() => setInfoAberto((v) => !v)}
+                className="text-xs font-semibold text-sky-800 hover:underline whitespace-nowrap"
               >
-                Limpar atalhos
+                Como funciona?
               </button>
-            )}
-            <button
-              onClick={() => setInfoAberto((v) => !v)}
-              className="text-xs font-semibold text-sky-800 hover:underline whitespace-nowrap"
-            >
-              Como funciona?
-            </button>
-
-            {infoAberto && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setInfoAberto(false)} />
-                <div className="absolute right-0 top-full mt-1.5 z-50 w-[min(92vw,440px)] bg-white border-2 border-slate-800 shadow-lg p-3.5 text-xs text-slate-700 space-y-2">
-                  <p className="font-bold text-slate-900 uppercase">Como medimos se a atuação converteu em votos</p>
-                  <p>
-                    Comparamos os votos de cada cidade entre <strong>{dados.elBase.label}</strong> e{' '}
-                    <strong>{dados.elComp.label}</strong>. No estado inteiro, os votos variaram{' '}
-                    <strong>{dados.crescEstado === null ? '—' : fmtSignedPct(dados.crescEstado)}</strong>.
-                  </p>
-                  <p>
-                    Uma cidade aparece como <strong>Converteu</strong> (ou <strong>Visitado e cresceu</strong>) quando recebeu emenda ou visita e cresceu{' '}
-                    {filtros.criterio === 'qualquer' ? 'qualquer quantidade de votos' : 'mais do que essa média do estado'}.
-                  </p>
-                  <p className="text-slate-500">
-                    Use esses botões para guiar visitas e reuniões: votos dependem de vários fatores além de emendas e agendas.
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
+            </div>
+          )}
         </div>
+
+        {/* Linha 3: Conversão dos Leads + Limpar / Como funciona */}
+        {dados.temBaseLeads && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-extrabold uppercase text-sky-700 mr-1 min-w-[118px]">
+                Leads ({dados.elBase.ano}→{dados.elComp.ano}):
+              </span>
+              {Object.entries(RESULTADOS_LEADS).map(([k, r]) => {
+                const ativo = (filtros.resLeads || []).includes(k);
+                return (
+                  <button
+                    key={k}
+                    onClick={() => toggleLeads(k)}
+                    title={r.desc}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border rounded-xs transition-colors ${
+                      ativo ? '' : 'bg-white border-slate-300 text-slate-800 hover:bg-sky-50'
+                    }`}
+                    style={ativo ? { background: r.cor, borderColor: r.cor, color: corTextoSobre(r.cor) } : undefined}
+                  >
+                    {!ativo && <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: r.cor }} />}
+                    <span>{r.label}</span>
+                    <span className={`text-[11px] font-extrabold ${ativo ? 'opacity-90' : 'text-slate-500'}`}>
+                      {(dados.contagemLeads && dados.contagemLeads[k]) || 0}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-3 relative">
+              {temAtalho && (
+                <button
+                  onClick={() => setFiltros({ resEmenda: [], resAgenda: [], resLeads: [], quadrante4: '' })}
+                  className="text-xs font-bold text-rose-700 hover:underline"
+                >
+                  Limpar atalhos
+                </button>
+              )}
+              <button
+                onClick={() => setInfoAberto((v) => !v)}
+                className="text-xs font-semibold text-sky-800 hover:underline whitespace-nowrap"
+              >
+                Como funciona?
+              </button>
+
+              {infoAberto && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setInfoAberto(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 z-50 w-[min(92vw,440px)] bg-white border-2 border-slate-800 shadow-lg p-3.5 text-xs text-slate-700 space-y-2">
+                    <p className="font-bold text-slate-900 uppercase">Como medimos se a atuação converteu em votos</p>
+                    <p>
+                      Comparamos os votos de cada cidade entre <strong>{dados.elBase.label}</strong> e{' '}
+                      <strong>{dados.elComp.label}</strong>. No estado inteiro, os votos variaram{' '}
+                      <strong>{dados.crescEstado === null ? '—' : fmtSignedPct(dados.crescEstado)}</strong>.
+                    </p>
+                    <p>
+                      Uma cidade aparece como <strong>Converteu</strong>, <strong>Visitado e cresceu</strong> ou{' '}
+                      <strong>Com leads e cresceu</strong> quando teve atuação/base local e cresceu{' '}
+                      {filtros.criterio === 'qualquer' ? 'qualquer quantidade de votos' : 'mais do que essa média do estado'}.
+                    </p>
+                    <p className="text-slate-500">
+                      Use esses botões para guiar visitas, captação de leads e reuniões: votos dependem de vários fatores além de emendas, agendas e leads.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -519,6 +577,10 @@ function MapaUnicoSC({ dados, mapGeoJson, modoMapa, celulaAtiva, onOpenMunicipio
       const c = RESULTADOS_AGENDAS[r.resAgenda];
       return { fill: c ? c.cor : '#ffffff', opacity: 1, stroke: '#334155', sw: 0.65 };
     }
+    if (modoMapa === 'conv_leads') {
+      const c = RESULTADOS_LEADS[r.resLeads];
+      return { fill: c ? c.cor : '#ffffff', opacity: 1, stroke: '#334155', sw: 0.65 };
+    }
     if (modoMapa === 'quad_presenca') {
       const c = QUADRANTES_4[r.quad4];
       return { fill: c ? c.cor : '#ffffff', opacity: 1, stroke: '#334155', sw: 0.65 };
@@ -591,6 +653,14 @@ function MapaUnicoSC({ dados, mapGeoJson, modoMapa, celulaAtiva, onOpenMunicipio
                 <p>
                   <strong>Emendas:</strong> {fmtInt(hover.r.emendasQtd)} • {fmtBRLCompact(hover.r.emendas)}
                 </p>
+                {dados.temBaseLeads && (
+                  <p>
+                    <strong>Leads:</strong> {fmtInt(hover.r.leads)}
+                    {hover.r.leadsTopTema ? (
+                      <span className="text-[11px] text-slate-500"> ({hover.r.leadsTopTema.split(' - ').pop()})</span>
+                    ) : null}
+                  </p>
+                )}
                 {hover.r.articuladores && (
                   <p className="text-[11px] text-rose-700 truncate">
                     <strong>Articulação:</strong> {hover.r.articuladores}
@@ -609,6 +679,8 @@ function MapaUnicoSC({ dados, mapGeoJson, modoMapa, celulaAtiva, onOpenMunicipio
                   <BadgeRes resultado={hover.r.resEmenda} />
                 ) : modoMapa === 'conv_agendas' ? (
                   <BadgeAgenda resultado={hover.r.resAgenda} />
+                ) : modoMapa === 'conv_leads' ? (
+                  <BadgeLeads resultado={hover.r.resLeads} />
                 ) : (
                   <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase ${QUADRANTES_4[hover.r.quad4].badge}`}>
                     {QUADRANTES_4[hover.r.quad4].label}
@@ -738,6 +810,15 @@ export function InicioDashboard({
               setFiltros({ resAgenda: atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k] });
             },
           }))
+        : modoMapa === 'conv_leads'
+        ? Object.entries(RESULTADOS_LEADS).map(([k, r]) => ({
+            k, label: r.label, desc: r.desc, cor: r.cor, qtd: (dados.contagemLeads && dados.contagemLeads[k]) || 0,
+            ativo: (filtros.resLeads || []).includes(k),
+            onClick: () => {
+              const atual = filtros.resLeads || [];
+              setFiltros({ resLeads: atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k] });
+            },
+          }))
         : Object.entries(QUADRANTES_4).map(([k, r]) => ({
             k, label: r.label, desc: r.desc, cor: r.cor, qtd: dados.contagemQuadrantes[k] || 0,
             ativo: filtros.quadrante4 === k,
@@ -781,7 +862,8 @@ export function InicioDashboard({
             Painel Estratégico do Mandato
           </h1>
           <p className="text-xs sm:text-sm text-slate-600">
-            Visão unificada de <strong>Votos</strong>, <strong>Emendas</strong> e <strong>Presença de Agenda</strong> em{' '}
+            Visão unificada de <strong>Votos</strong>, <strong>Emendas</strong>, <strong>Presença de Agenda</strong>
+            {dados.temBaseLeads ? <> e <strong>Leads</strong></> : null} em{' '}
             <strong>{fmtInt(R.cidades)} municípios</strong>
             {filtros.excluirFloripa ? ' (somente interior de SC)' : ' de Santa Catarina'}.
           </p>
@@ -806,7 +888,7 @@ export function InicioDashboard({
       </div>
 
       {/* 1. Cartões de Resumo Principal */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${dados.temBaseLeads ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3.5`}>
         <CartaoKpi
           label={`Votos ${dados.elComp ? dados.elComp.label : ''}`}
           value={fmtInt(R.votosComp)}
@@ -829,6 +911,14 @@ export function InicioDashboard({
           destaque="pink"
           sub={`${fmtInt(R.visitados)} cidades visitadas • ${fmtHoras(R.horas)} acumuladas`}
         />
+        {dados.temBaseLeads && (
+          <CartaoKpi
+            label="Base de Leads (SC)"
+            value={`${fmtInt(R.leadsTotal)} leads`}
+            destaque="sky"
+            sub={`${fmtInt(R.comLeads)} cidades • cobrem ${fmtPct(R.coberturaVotosLeads, 0)} dos votos`}
+          />
+        )}
         <CartaoKpi
           label="Sinergia no Território"
           value={`${fmtInt(R.comAmbos)} cidades`}
@@ -842,7 +932,7 @@ export function InicioDashboard({
         <Bloco
           className="lg:col-span-8"
           title="Mapa Único de Santa Catarina"
-          subtitle="Clique em qualquer cidade para abrir a Ficha Completa com votos, visitas e emendas"
+          subtitle="Clique em qualquer cidade para abrir a Ficha Completa com votos, visitas, emendas e leads"
           right={
             <button
               onClick={() => baixarSvgPng(mapaRef.current, `tabulum_mapa_${modoMapa}.png`)}
@@ -942,7 +1032,26 @@ export function InicioDashboard({
                 )}
               </div>
 
-              {/* Comparação prática 3: Combinado */}
+              {/* Comparação prática 3: Leads */}
+              {dados.temBaseLeads && I.leads && (
+                <div className="p-2.5 bg-sky-50/50 border-l-4 border-sky-500 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold uppercase text-[11px] text-sky-950">Efeito dos Leads</span>
+                    {badgeRelacao(I.leads)}
+                  </div>
+                  <p className="leading-snug">
+                    Cidades com leads cadastrados cresceram <strong>{fmtSignedPct(I.crescTipicoComLeads)}</strong>, contra{' '}
+                    <strong>{fmtSignedPct(I.crescTipicoSemLeads)}</strong> nas sem leads.
+                  </p>
+                  {I.taxaCresceramLeads !== null && (
+                    <p className="text-[11px] text-slate-600">
+                      {fmtPct(I.taxaCresceramLeads, 0)} das cidades com leads aumentaram a votação.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Comparação prática 4: Combinado */}
               <div className="p-2.5 bg-amber-50/80 border-l-4 border-amber-400 space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-bold uppercase text-[11px] text-amber-950">Visita + Emenda Juntas</span>
@@ -968,6 +1077,12 @@ export function InicioDashboard({
                     <li>Agendas × Variação de votos: <strong>{I.notaTecnica.rhoAgDelta !== null ? I.notaTecnica.rhoAgDelta.toFixed(2).replace('.', ',') : '—'}</strong></li>
                     <li>Emendas × Votos {anoComp}: <strong>{I.notaTecnica.rhoEmVotos !== null ? I.notaTecnica.rhoEmVotos.toFixed(2).replace('.', ',') : '—'}</strong></li>
                     <li>Emendas × Variação de votos: <strong>{I.notaTecnica.rhoEmDelta !== null ? I.notaTecnica.rhoEmDelta.toFixed(2).replace('.', ',') : '—'}</strong></li>
+                    {dados.temBaseLeads && (
+                      <>
+                        <li>Leads × Votos {anoComp}: <strong>{I.notaTecnica.rhoLdVotos !== null ? I.notaTecnica.rhoLdVotos.toFixed(2).replace('.', ',') : '—'}</strong></li>
+                        <li>Leads × Variação de votos: <strong>{I.notaTecnica.rhoLdDelta !== null ? I.notaTecnica.rhoLdDelta.toFixed(2).replace('.', ',') : '—'}</strong></li>
+                      </>
+                    )}
                     <li>Índice Combinado × Variação: <strong>{I.notaTecnica.rhoCombDelta !== null ? I.notaTecnica.rhoCombDelta.toFixed(2).replace('.', ',') : '—'}</strong></li>
                   </ul>
                 </div>
@@ -998,6 +1113,9 @@ export function InicioDashboard({
               { key: 'regiao', label: 'Região', align: 'left', render: (r) => r.regiao || '—' },
               { key: 'agendas', label: 'Agendas', align: 'right', render: (r) => (r.agendas ? <strong className="text-pink-700">{fmtInt(r.agendas)}</strong> : '0') },
               { key: 'emendas', label: 'Emendas', align: 'right', render: (r) => (r.emendas ? fmtBRLCompact(r.emendas) : '—') },
+              ...(dados.temBaseLeads
+                ? [{ key: 'leads', label: 'Leads', align: 'right', render: (r) => (r.leads ? <strong className="text-sky-700">{fmtInt(r.leads)}</strong> : '0') }]
+                : []),
               { key: 'vBase', label: `Votos ${anoBase}`, align: 'right', render: (r) => fmtInt(r.vBase) },
               { key: 'vComp', label: `Votos ${anoComp}`, align: 'right', render: (r) => <strong>{fmtInt(r.vComp)}</strong> },
               { key: 'delta', label: 'Variação', align: 'right', render: (r) => <DeltaVotos v={r.delta} pct={r.deltaPct} /> },
@@ -1007,7 +1125,7 @@ export function InicioDashboard({
         </Bloco>
       )}
 
-      {/* 3. Quatro listas de ação prática */}
+      {/* 3. Listas de ação prática (Emendas, Agendas e Leads) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {listaAcao(
           'Prioridade de visita: recebeu emenda, mas 0 agendas',
@@ -1033,15 +1151,42 @@ export function InicioDashboard({
           )
         )}
 
+        {dados.temBaseLeads &&
+          listaAcao(
+            'Oportunidade de captação: votos sem nenhum lead cadastrado',
+            'Cidades onde o mandato já tem voto, mas ainda não captou contatos na base',
+            dados.destaques.votosSemLeads || [],
+            (r) => (
+              <div>
+                <strong className="text-sky-800">{fmtInt(r.vComp)} votos</strong>
+                <span className="block text-[11px]"><DeltaVotos v={r.delta} pct={r.deltaPct} /></span>
+              </div>
+            )
+          )}
+
+        {dados.temBaseLeads &&
+          listaAcao(
+            'Leads a ativar: têm contatos cadastrados, mas votos não subiram',
+            'Cidades com base de leads onde vale acionar comunicação e mobilização local',
+            dados.destaques.leadsSemCrescimento || [],
+            (r) => (
+              <div>
+                <strong className="text-pink-700">{fmtInt(r.leads)} leads</strong>
+                <span className="block text-[11px]"><DeltaVotos v={r.delta} pct={r.deltaPct} /></span>
+              </div>
+            )
+          )}
+
         {listaAcao(
           'Onde o trabalho cresceu mais nas urnas',
-          'Cidades com visita ou emenda que tiveram maior ganho de votos',
+          'Cidades com visita, emenda ou leads que tiveram maior ganho de votos',
           dados.destaques.maioresGanhos,
           (r) => (
             <div>
               <DeltaVotos v={r.delta} pct={r.deltaPct} />
               <span className="block text-[11px] text-slate-600">
                 {r.agendas} ag. • {r.emendas ? fmtBRLCompact(r.emendas) : 'sem emenda'}
+                {dados.temBaseLeads && r.leads ? ` • ${fmtInt(r.leads)} leads` : ''}
               </span>
             </div>
           )
@@ -1079,6 +1224,9 @@ export function InicioDashboard({
             { key: 'horas', label: 'Horas', align: 'right', render: (a) => fmtHoras(a.horas) },
             { key: 'emendasQtd', label: 'Emendas', align: 'center', render: (a) => a.emendasQtd || '—' },
             { key: 'emendas', label: 'Valor Destinado', align: 'right', render: (a) => (a.emendas ? fmtBRLCompact(a.emendas) : '—') },
+            ...(dados.temBaseLeads
+              ? [{ key: 'leads', label: 'Leads nas cidades', align: 'right', render: (a) => (a.leads ? <strong className="text-sky-700">{fmtInt(a.leads)}</strong> : '—') }]
+              : []),
             { key: 'vComp', label: `Votos ${anoComp} nas cidades`, align: 'right', render: (a) => <strong>{fmtInt(a.vComp)}</strong> },
             { key: 'delta', label: 'Variação nas cidades', align: 'right', render: (a) => <DeltaVotos v={a.delta} pct={a.deltaPct} /> },
             { key: 'cresceram', label: 'Cidades que cresceram', align: 'center', render: (a) => `${a.cresceram} de ${a.municipios}` },
@@ -1112,6 +1260,9 @@ export function InicioDashboard({
               { key: 'visitados', label: 'Visitadas', align: 'center' },
               { key: 'agendas', label: 'Agendas', align: 'right', render: (g) => <strong className="text-pink-700">{fmtInt(g.agendas)}</strong> },
               { key: 'emendas', label: 'Emendas', align: 'right', render: (g) => (g.emendas ? fmtBRLCompact(g.emendas) : '—') },
+              ...(dados.temBaseLeads
+                ? [{ key: 'leads', label: 'Leads', align: 'right', render: (g) => (g.leads ? <strong className="text-sky-700">{fmtInt(g.leads)}</strong> : '—') }]
+                : []),
               { key: 'vComp', label: `Votos ${anoComp}`, align: 'right', render: (g) => <strong>{fmtInt(g.vComp)}</strong> },
               { key: 'delta', label: 'Variação', align: 'right', render: (g) => <DeltaVotos v={g.delta} pct={g.deltaPct} /> },
               { key: 'share', label: '% dos votos', align: 'right', render: (g) => fmtPct(g.share) },
@@ -1123,11 +1274,16 @@ export function InicioDashboard({
           <BarrasAnuais itens={dados.evolucaoAgendas} cor="bg-pink-600" />
           <div className="px-3.5 py-2.5 border-t border-slate-200 bg-slate-50 flex flex-wrap justify-between gap-2 text-xs">
             <button onClick={() => irParaTela('emendas')} className="font-bold text-rose-700 hover:underline">
-              Abrir base de Emendas ({fmtInt(dados.emendasFiltradas.length)}) →
+              Emendas ({fmtInt(dados.emendasFiltradas.length)}) →
             </button>
             <button onClick={() => irParaTela('agendas')} className="font-bold text-pink-700 hover:underline">
-              Abrir base de Agendas ({fmtInt(dados.agendasFiltradas.length)}) →
+              Agendas ({fmtInt(dados.agendasFiltradas.length)}) →
             </button>
+            {dados.temBaseLeads && (
+              <button onClick={() => irParaTela('leads')} className="font-bold text-sky-700 hover:underline">
+                Leads ({fmtInt(R.leadsTotal)}) →
+              </button>
+            )}
           </div>
         </Bloco>
       </div>
@@ -1136,7 +1292,7 @@ export function InicioDashboard({
 }
 
 /* ==========================================================================
-   TELA 2: MUNICÍPIOS (TABELA UNIFICADA: VOTOS + EMENDAS + AGENDAS)
+   TELA 2: MUNICÍPIOS (TABELA UNIFICADA: VOTOS + EMENDAS + AGENDAS + LEADS)
    ========================================================================== */
 export function MunicipiosUnificadosView({ dados, eleitoral, openEntityFicha, exportRows }) {
   const [mostrarTodasEleicoes, setMostrarTodasEleicoes] = useState(false);
@@ -1187,11 +1343,17 @@ export function MunicipiosUnificadosView({ dados, eleitoral, openEntityFicha, ex
     { key: 'agendas', label: 'Agendas', align: 'right', render: (r) => (r.agendas ? <strong className="text-pink-700">{fmtInt(r.agendas)}</strong> : <span className="text-slate-300">0</span>) },
     { key: 'horas', label: 'Horas', align: 'right', render: (r) => (r.horas > 0 ? fmtHoras(r.horas) : <span className="text-slate-300">—</span>) },
     { key: 'ultimaVisita', label: 'Última visita', align: 'center', render: (r) => (r.ultimaVisita ? fmtDataBr(r.ultimaVisita) : <span className="text-slate-300">—</span>) },
+    ...(dados.temBaseLeads
+      ? [{ key: 'leads', label: 'Leads', align: 'right', render: (r) => (r.leads ? <strong className="text-sky-700">{fmtInt(r.leads)}</strong> : <span className="text-slate-300">0</span>) }]
+      : []),
     { key: 'emendasQtd', label: 'Emendas', align: 'center', render: (r) => r.emendasQtd || <span className="text-slate-300">—</span> },
     { key: 'emendas', label: 'Destinado', align: 'right', render: (r) => (r.emendas ? fmtBRL(r.emendas) : <span className="text-slate-300">—</span>) },
     { key: 'pago', label: 'Pago', align: 'right', render: (r) => (r.pago ? fmtBRL(r.pago) : <span className="text-slate-300">—</span>) },
     { key: 'resEmenda', label: 'Emendas × Votos', align: 'left', render: (r) => <BadgeRes resultado={r.resEmenda} /> },
     { key: 'resAgenda', label: 'Agendas × Votos', align: 'left', render: (r) => <BadgeAgenda resultado={r.resAgenda} /> },
+    ...(dados.temBaseLeads
+      ? [{ key: 'resLeads', label: 'Leads × Votos', align: 'left', render: (r) => <BadgeLeads resultado={r.resLeads} /> }]
+      : []),
     {
       key: 'celId', label: 'Matriz 3×3', align: 'left',
       sortValue: (r) => r.fy * 10 + r.fx,
@@ -1221,11 +1383,13 @@ export function MunicipiosUnificadosView({ dados, eleitoral, openEntityFicha, ex
         Agendas: r.agendas,
         Horas: r.horas.toFixed(1).replace('.', ','),
         'Última visita': fmtDataBr(r.ultimaVisita),
+        ...(dados.temBaseLeads ? { Leads: r.leads, 'Principal tema (Leads)': r.leadsTopTema } : {}),
         'Emendas (qtd)': r.emendasQtd,
         'Valor destinado': dinheiroCsv(r.emendas),
         'Valor pago': dinheiroCsv(r.pago),
         'Resultado Emendas': RESULTADOS_EMENDAS[r.resEmenda] ? RESULTADOS_EMENDAS[r.resEmenda].label : '',
         'Resultado Agendas': RESULTADOS_AGENDAS[r.resAgenda] ? RESULTADOS_AGENDAS[r.resAgenda].label : '',
+        ...(dados.temBaseLeads ? { 'Resultado Leads': RESULTADOS_LEADS[r.resLeads] ? RESULTADOS_LEADS[r.resLeads].label : '' } : {}),
         'Matriz 3x3': MATRIZ_3X3[r.celId].titulo,
         Articuladores: r.articuladores,
       })),
@@ -1241,7 +1405,7 @@ export function MunicipiosUnificadosView({ dados, eleitoral, openEntityFicha, ex
             Todos os Municípios ({fmtInt(dados.cidadesFiltradas.length)})
           </h2>
           <p className="text-xs text-slate-600">
-            Votos, visitas de agenda e emendas lado a lado. Clique em qualquer cidade para abrir a Ficha Completa.
+            Votos, visitas de agenda, leads e emendas lado a lado. Clique em qualquer cidade para abrir a Ficha Completa.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
