@@ -143,8 +143,10 @@ export function LeadsStatus({ leads, status, erro, recarregar }) {
 
 /* ---------------- perfil de leads dentro das Fichas ----------------------- */
 export function LeadsPerfil({ type, value, leads, eleitoral, openEntityFicha }) {
+  const tipoSuportado = ['municipio', 'regiao', 'tema'].includes(type);
+
   const gruposFicha = useMemo(() => {
-    if (!leads || !value) return [];
+    if (!leads || !value || !tipoSuportado) return [];
     const k = norm(value);
     return leads.grupos.filter((g) => {
       if (type === 'municipio') return g.norm === k;
@@ -156,12 +158,7 @@ export function LeadsPerfil({ type, value, leads, eleitoral, openEntityFicha }) 
       if (type === 'tema') return g.tema && norm(g.tema) === k;
       return false;
     });
-  }, [leads, eleitoral, type, value]);
-
-  if (!leads || !['municipio', 'regiao', 'tema'].includes(type)) return null;
-
-  const totalLeads = gruposFicha.reduce((s, g) => s + g.qtd, 0);
-  const shareTotal = leads.totalValidos > 0 ? (totalLeads / leads.totalValidos) * 100 : null;
+  }, [leads, eleitoral, type, value, tipoSuportado]);
 
   const porTema = useMemo(() => {
     const m = new Map();
@@ -201,6 +198,11 @@ export function LeadsPerfil({ type, value, leads, eleitoral, openEntityFicha }) 
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [gruposFicha, type]);
 
+  if (!leads || !tipoSuportado) return null;
+
+  const totalLeads = gruposFicha.reduce((s, g) => s + g.qtd, 0);
+  const shareTotal = leads.totalValidos > 0 ? (totalLeads / leads.totalValidos) * 100 : null;
+
   return (
     <div className="p-4 border-b border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -219,7 +221,6 @@ export function LeadsPerfil({ type, value, leads, eleitoral, openEntityFicha }) 
         </p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Principais Temas */}
           {type !== 'tema' && (
             <div className="border border-slate-300 bg-white">
               <div className="bg-amber-100/90 border-b border-slate-300 px-3 py-1.5 flex justify-between items-center">
@@ -243,7 +244,6 @@ export function LeadsPerfil({ type, value, leads, eleitoral, openEntityFicha }) 
             </div>
           )}
 
-          {/* Principais Campanhas / Origens */}
           <div className="border border-slate-300 bg-white">
             <div className="bg-amber-100/90 border-b border-slate-300 px-3 py-1.5 flex justify-between items-center">
               <span className="font-bold text-xs uppercase text-slate-800">Campanhas & Origens</span>
@@ -259,7 +259,6 @@ export function LeadsPerfil({ type, value, leads, eleitoral, openEntityFicha }) 
             </div>
           </div>
 
-          {/* Bairros (para Floripa) ou Cidades (para Região/Tema) */}
           {porBairro.length > 0 && (
             <div className="border border-slate-300 bg-white">
               <div className="bg-amber-100/90 border-b border-slate-300 px-3 py-1.5 flex justify-between items-center">
@@ -375,195 +374,4 @@ export function LeadsListaView({ dados, leads, openEntityFicha, exportRows }) {
       return exportRows(
         temasFiltrados.map((r) => ({
           Tema: r.tema,
-          'Leads Válidos': r.qtd,
-          'Cidades Alcançadas': r.cidades,
-          Campanhas: r.origens,
-        })),
-        'tabulum_leads_por_tema.csv'
-      );
-    }
-    return exportRows(
-      gruposFiltrados.map((g) => ({
-        Município: g.municipio,
-        UF: g.uf,
-        'Bairro (Floripa)': g.bairro,
-        Tema: g.tema,
-        'Campanha / Origem': g.origem,
-        'Leads Válidos': g.qtd,
-      })),
-      'tabulum_leads_detalhado_anonimizado.csv'
-    );
-  };
-
-  return (
-    <div className="max-w-[98%] xl:max-w-[1600px] mx-auto px-3 sm:px-4 py-4 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-        <div>
-          <h2 className="text-base sm:text-lg font-extrabold uppercase text-slate-900">
-            Base de Leads & Mobilização ({fmtInt(totalLeadsRecorte)} contatos válidos)
-          </h2>
-          <p className="text-xs text-slate-600">
-            {fmtInt(cidadesRecorte)} municípios • {fmtInt(origensFiltradas.length)} campanhas/origens •{' '}
-            {leads ? `${fmtInt(leads.ignoradosRepetidos)} repetidos removidos automaticamente • ` : ''}
-            <strong>LGPD:</strong> dados pessoais protegidos no servidor (exibição apenas por contagens).
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={buscaInterna}
-            onChange={(e) => setBuscaInterna(e.target.value)}
-            placeholder="Filtrar cidade, tema ou campanha..."
-            className="px-3 py-1.5 text-xs bg-white border border-slate-300 w-64 focus:outline-none focus:border-sky-700"
-          />
-          <button onClick={exportarCSV} className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 hover:bg-amber-100">
-            Baixar CSV
-          </button>
-          <button onClick={() => window.print()} className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 hover:bg-sky-700 hover:text-white">
-            PDF
-          </button>
-        </div>
-      </div>
-
-      {/* Sub-abas da tela de Leads */}
-      <div className="flex flex-wrap border-b border-slate-300 print:hidden">
-        {[
-          ['origens', `Por Campanha / Origem (${fmtInt(origensFiltradas.length)})`],
-          ['temas', `Por Tema (${fmtInt(temasFiltrados.length)})`],
-          ['grupos', `Detalhamento Cidade × Tema (${fmtInt(gruposFiltrados.length)})`],
-        ].map(([k, l]) => (
-          <button
-            key={k}
-            onClick={() => setSubAba(k)}
-            className={`px-4 py-2 text-xs font-bold uppercase border border-b-0 -mb-px ${
-              subAba === k ? 'bg-white border-slate-300 text-sky-800' : 'bg-slate-100 border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {/* Sub-aba 1: Campanhas / Origens */}
-      {subAba === 'origens' && (
-        <div className="border border-slate-300 bg-white overflow-x-auto shadow-xs">
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-amber-100/90 border-b border-slate-300">
-              <tr>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Campanha / Origem</th>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Tema</th>
-                <th className="py-2 px-3 text-center text-[11px] font-bold uppercase text-slate-800">Cidades</th>
-                <th className="py-2 px-3 text-right text-[11px] font-bold uppercase text-slate-800">Leads Válidos</th>
-                <th className="py-2 px-3 text-right text-[11px] font-bold uppercase text-slate-800">% no recorte</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {origensFiltradas.map((r) => (
-                <tr key={r.origem} className="hover:bg-sky-50/50">
-                  <td className="py-2 px-3 font-medium text-slate-900">{r.origem}</td>
-                  <td className="py-2 px-3 text-slate-700">
-                    {r.tema ? (
-                      <button onClick={() => openEntityFicha && openEntityFicha('tema', r.tema)} className="text-sky-800 hover:underline text-left">
-                        {r.tema}
-                      </button>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-center font-semibold">{fmtInt(r.cidades)}</td>
-                  <td className="py-2 px-3 text-right font-extrabold text-pink-700">{fmtInt(r.qtd)}</td>
-                  <td className="py-2 px-3 text-right text-slate-600">{fmtPct(totalLeadsRecorte > 0 ? (r.qtd / totalLeadsRecorte) * 100 : null)}</td>
-                </tr>
-              ))}
-              {origensFiltradas.length === 0 && (
-                <tr><td colSpan="5" className="py-8 text-center text-slate-400 uppercase">Nenhum dado neste filtro.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Sub-aba 2: Por Tema */}
-      {subAba === 'temas' && (
-        <div className="border border-slate-300 bg-white overflow-x-auto shadow-xs">
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-amber-100/90 border-b border-slate-300">
-              <tr>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Tema (Classe — Subclasse)</th>
-                <th className="py-2 px-3 text-center text-[11px] font-bold uppercase text-slate-800">Campanhas</th>
-                <th className="py-2 px-3 text-center text-[11px] font-bold uppercase text-slate-800">Cidades</th>
-                <th className="py-2 px-3 text-right text-[11px] font-bold uppercase text-slate-800">Leads Válidos</th>
-                <th className="py-2 px-3 text-right text-[11px] font-bold uppercase text-slate-800">% no recorte</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {temasFiltrados.map((r) => (
-                <tr
-                  key={r.tema}
-                  onClick={() => r.tema !== 'Sem tema específico' && openEntityFicha && openEntityFicha('tema', r.tema)}
-                  className={r.tema !== 'Sem tema específico' ? 'hover:bg-sky-50/50 cursor-pointer' : 'text-slate-500 italic'}
-                >
-                  <td className="py-2 px-3 font-semibold text-sky-900">{r.tema}</td>
-                  <td className="py-2 px-3 text-center">{fmtInt(r.origens)}</td>
-                  <td className="py-2 px-3 text-center">{fmtInt(r.cidades)}</td>
-                  <td className="py-2 px-3 text-right font-extrabold text-pink-700">{fmtInt(r.qtd)}</td>
-                  <td className="py-2 px-3 text-right text-slate-600">{fmtPct(totalLeadsRecorte > 0 ? (r.qtd / totalLeadsRecorte) * 100 : null)}</td>
-                </tr>
-              ))}
-              {temasFiltrados.length === 0 && (
-                <tr><td colSpan="5" className="py-8 text-center text-slate-400 uppercase">Nenhum dado neste filtro.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Sub-aba 3: Detalhamento Cidade × Tema × Origem */}
-      {subAba === 'grupos' && (
-        <div className="border border-slate-300 bg-white overflow-x-auto shadow-xs">
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-amber-100/90 border-b border-slate-300">
-              <tr>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Município</th>
-                <th className="py-2 px-3 text-center text-[11px] font-bold uppercase text-slate-800">UF</th>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Bairro (Floripa)</th>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Tema</th>
-                <th className="py-2 px-3 text-left text-[11px] font-bold uppercase text-slate-800">Campanha / Origem</th>
-                <th className="py-2 px-3 text-right text-[11px] font-bold uppercase text-slate-800">Qtd</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {gruposFiltrados.slice(0, 250).map((g) => (
-                <tr key={g.id} className="hover:bg-sky-50/50">
-                  <td className="py-2 px-3">
-                    {g.municipio ? (
-                      <button onClick={() => openEntityFicha && openEntityFicha('municipio', g.municipio)} className="font-bold text-sky-800 hover:underline">
-                        {g.municipio}
-                      </button>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-center text-slate-600">{g.uf || '—'}</td>
-                  <td className="py-2 px-3 text-slate-700">{g.bairro || <span className="text-slate-300">—</span>}</td>
-                  <td className="py-2 px-3 text-slate-700">{g.tema || <span className="text-slate-300">—</span>}</td>
-                  <td className="py-2 px-3 text-slate-700">{g.origem || '—'}</td>
-                  <td className="py-2 px-3 text-right font-extrabold text-pink-700">{fmtInt(g.qtd)}</td>
-                </tr>
-              ))}
-              {gruposFiltrados.length === 0 && (
-                <tr><td colSpan="6" className="py-8 text-center text-slate-400 uppercase">Nenhum registro encontrado.</td></tr>
-              )}
-            </tbody>
-          </table>
-          {gruposFiltrados.length > 250 && (
-            <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
-              Exibindo os 250 maiores grupos de {fmtInt(gruposFiltrados.length)}. Use a busca ou clique em <strong>Baixar CSV</strong> para ver todos.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+          'Leads
