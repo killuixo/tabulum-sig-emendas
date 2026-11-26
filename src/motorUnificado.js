@@ -1,9 +1,9 @@
 import { norm, tituloMunicipio, chavesPadrao, RESULTADOS } from './eleitoral.jsx';
 
 /* ==========================================================================
-   TABULUM — Motor Unificado (Emendas × Agendas × Votos)
+   TABULUM — Motor Unificado (Emendas × Agendas × Leads × Votos)
    Sem dados sensíveis. Toda a lógica de cruzamento, matriz 3×3, regiões,
-   articuladores e tradução estatística em linguagem natural fica aqui.
+   articuladores, leads anonimizados e tradução em linguagem natural fica aqui.
    ========================================================================== */
 
 /* ------------------------------ formatadores ------------------------------ */
@@ -77,6 +77,9 @@ export const FILTROS_PADRAO = {
   temas: [],
   uos: [],
   incluirExecDireta: false,
+  // Leads (anonimizados)
+  temasLeads: [],
+  origensLeads: [],
   // Eleições
   baseKey: '',
   compKey: '',
@@ -85,6 +88,7 @@ export const FILTROS_PADRAO = {
   busca: '',
   resEmenda: [],
   resAgenda: [],
+  resLeads: [],
   quadrante4: '',
 };
 
@@ -98,9 +102,11 @@ export const PERIODOS_AGENDA = [
 export const MODOS_MAPA = [
   { key: 'matriz_agendas', label: 'Agendas × Votos', tipo: 'matriz', campoY: 'agendas', labelY: 'agendas', tituloY: 'Visitas / Agendas', fmtY: fmtInt },
   { key: 'matriz_emendas', label: 'Emendas × Votos', tipo: 'matriz', campoY: 'emendas', labelY: 'emendas', tituloY: 'Valor em Emendas', fmtY: fmtBRLCompact },
-  { key: 'matriz_combinado', label: 'Agendas + Emendas × Votos', tipo: 'matriz', campoY: 'indice', labelY: 'atuação', tituloY: 'Atuação Total (Agenda + Emenda)', fmtY: (v) => `${Math.round(v)} pts` },
+  { key: 'matriz_leads', label: 'Leads × Votos', tipo: 'matriz', campoY: 'leads', labelY: 'leads', tituloY: 'Leads Cadastrados', fmtY: fmtInt },
+  { key: 'matriz_combinado', label: 'Atuação Total × Votos', tipo: 'matriz', campoY: 'indice', labelY: 'atuação', tituloY: 'Atuação Total (Agenda + Emenda + Leads)', fmtY: (v) => `${Math.round(v)} pts` },
   { key: 'conv_emendas', label: 'Conversão das Emendas', tipo: 'emendas' },
   { key: 'conv_agendas', label: 'Conversão das Agendas', tipo: 'agendas' },
+  { key: 'conv_leads', label: 'Conversão dos Leads', tipo: 'leads' },
   { key: 'quad_presenca', label: 'Presença × Emendas', tipo: 'quadrantes' },
 ];
 
@@ -110,7 +116,7 @@ export const METRICAS_ELEITORAIS = [
   { key: 'deltaPct', label: 'Crescimento (%)', curto: 'crescimento', tipo: 'variacao', fmt: fmtSignedPct },
 ];
 
-/* ----------------- resultados de conversão (emendas e agendas) ------------ */
+/* ----------------- resultados de conversão (emendas, agendas, leads) ------ */
 export const RESULTADOS_EMENDAS = RESULTADOS;
 
 export const RESULTADOS_AGENDAS = {
@@ -151,6 +157,44 @@ export const RESULTADOS_AGENDAS = {
   },
 };
 
+export const RESULTADOS_LEADS = {
+  lead_cresceu: {
+    label: 'Com leads e cresceu',
+    cor: '#db2777',
+    texto: '#ffffff',
+    badge: 'bg-pink-600 text-white',
+    desc: 'Tem leads cadastrados e os votos cresceram acima da média do estado',
+  },
+  lead_pouco: {
+    label: 'Com leads, cresceu pouco',
+    cor: '#f59e0b',
+    texto: '#0f172a',
+    badge: 'bg-amber-300 text-slate-900',
+    desc: 'Tem leads cadastrados; cresceu em votos, mas abaixo da média do estado',
+  },
+  lead_nao_cresceu: {
+    label: 'Com leads e não cresceu',
+    cor: '#be123c',
+    texto: '#ffffff',
+    badge: 'bg-rose-700 text-white',
+    desc: 'Tem leads cadastrados, mas os votos ficaram estáveis ou caíram',
+  },
+  cresceu_sem_lead: {
+    label: 'Cresceu sem leads',
+    cor: '#0284c7',
+    texto: '#ffffff',
+    badge: 'bg-sky-600 text-white',
+    desc: 'Não tem leads cadastrados, mas cresceu nas urnas (oportunidade de captação)',
+  },
+  sem_lead_sem_cresc: {
+    label: 'Sem leads e sem crescimento',
+    cor: '#cbd5e1',
+    texto: '#334155',
+    badge: 'bg-slate-200 text-slate-700',
+    desc: 'Não tem leads cadastrados e os votos não cresceram',
+  },
+};
+
 export const QUADRANTES_4 = {
   Q1: {
     id: 'Q1',
@@ -187,33 +231,30 @@ export const QUADRANTES_4 = {
 };
 
 /* ----------------- matriz bivariada 3x3 (cores primárias) ----------------- */
-// Eixo Y (linhas): 0 = Baixo volume de dados, 1 = Médio, 2 = Alto
-// Eixo X (colunas): 0 = Baixo desempenho eleitoral, 1 = Médio, 2 = Alto
-// Azul claro (baixo/baixo) -> Amarelos (faixas médias) -> Rosa choque (alto/alto)
 export const MATRIZ_3X3 = {
   '2_0': {
     id: '2_0', y: 2, x: 0, cor: '#f9a8d4', texto: '#831843',
     titulo: 'Muita atuação, poucos votos',
     curto: 'Esforço a converter',
-    desc: 'Recebeu bastante atenção do mandato, mas a votação ainda é baixa ou caiu. Vale conversar com as lideranças locais.',
+    desc: 'Recebeu bastante atenção/contatos do mandato, mas a votação ainda é baixa ou caiu. Vale conversar com as lideranças locais.',
   },
   '2_1': {
     id: '2_1', y: 2, x: 1, cor: '#f43f5e', texto: '#ffffff',
     titulo: 'Muita atuação, voto intermediário',
     curto: 'Em crescimento',
-    desc: 'Presença forte com votação intermediária. Bom terreno para consolidar e chegar ao topo.',
+    desc: 'Base forte com votação intermediária. Bom terreno para consolidar e chegar ao topo.',
   },
   '2_2': {
     id: '2_2', y: 2, x: 2, cor: '#db2777', texto: '#ffffff',
     titulo: 'Muita atuação e muitos votos',
     curto: 'Polo forte',
-    desc: 'Cidades onde há forte trabalho do mandato e grande resposta nas urnas. Núcleo principal da base.',
+    desc: 'Cidades onde há forte trabalho/mobilização do mandato e grande resposta nas urnas. Núcleo principal da base.',
   },
   '1_0': {
     id: '1_0', y: 1, x: 0, cor: '#fef08a', texto: '#713f12',
     titulo: 'Atuação média, poucos votos',
     curto: 'Início de trabalho',
-    desc: 'Atuação moderada com votação ainda inicial.',
+    desc: 'Atuação ou base moderada com votação ainda inicial.',
   },
   '1_1': {
     id: '1_1', y: 1, x: 1, cor: '#facc15', texto: '#422006',
@@ -237,13 +278,13 @@ export const MATRIZ_3X3 = {
     id: '0_1', y: 0, x: 1, cor: '#38bdf8', texto: '#082f49',
     titulo: 'Pouca atuação, voto intermediário',
     curto: 'Voto espontâneo',
-    desc: 'Já tem votos sem grande atuação do mandato. Boa oportunidade para primeira visita.',
+    desc: 'Já tem votos sem grande atuação registrada. Boa oportunidade para visita e captação.',
   },
   '0_2': {
     id: '0_2', y: 0, x: 2, cor: '#0284c7', texto: '#ffffff',
     titulo: 'Pouca atuação, muitos votos',
-    curto: 'Base orgânica (visitar!)',
-    desc: 'Votação alta mesmo sem visita ou emenda proporcional. Prioridade para fortalecer vínculo.',
+    curto: 'Base orgânica (prioridade!)',
+    desc: 'Votação alta mesmo sem visita, emenda ou base de leads proporcional. Prioridade para fortalecer vínculo.',
   },
 };
 
@@ -340,7 +381,6 @@ function calcularFaixas3(valores, tipo, fmt) {
   }
 
   const zeros = validos.length - ativos.length;
-  // Se muitas cidades têm 0, coloca 0 em "Baixo" e divide as ativas ao meio
   if (zeros / validos.length >= 0.25) {
     const corteAlto = percentile(ativos, 50) || Math.min(...ativos);
     return {
@@ -402,6 +442,7 @@ export function calcularPainelUnificado({
   emendasTodas = [],
   eleitoral = null,
   agenda = null,
+  leads = null,
   filtros = FILTROS_PADRAO,
   modoMapa = 'matriz_agendas',
   metricaX = 'vComp',
@@ -443,6 +484,8 @@ export function calcularPainelUnificado({
   const aSet = new Set((f.associacoes || []).map(norm));
   const artSet = new Set((f.articuladores || []).map(norm));
   const clsSet = new Set(f.classesAgenda || []);
+  const temasLeadSet = new Set(f.temasLeads || []);
+  const origensLeadSet = new Set(f.origensLeads || []);
   const buscaNorm = norm(f.busca);
   const buscaLower = String(f.busca || '').trim().toLowerCase();
 
@@ -456,7 +499,7 @@ export function calcularPainelUnificado({
     return true;
   };
 
-  // 1) Filtragem das EMENDAS (antes dos atalhos de conversão)
+  // 1) Filtragem das EMENDAS
   const emendasBase = (emendasTodas || []).filter((e) => {
     const k = norm(e['MUNICÍPIO']);
     if (k && !SEM_MUNICIPIO.has(k) && !passaTerritorio(k, e.REGIÃO)) return false;
@@ -479,7 +522,7 @@ export function calcularPainelUnificado({
   const isExecDireta = (e) => /execu[cç][aã]o direta/i.test(String(e.MODALIDADE || ''));
   const emendasCruzamento = f.incluirExecDireta ? emendasBase : emendasBase.filter((e) => !isExecDireta(e));
 
-  // 2) Filtragem das AGENDAS (antes dos atalhos de conversão)
+  // 2) Filtragem das AGENDAS
   const periodoInfo = PERIODOS_AGENDA.find((p) => p.key === f.periodoAgenda);
   const anosAgendaAtivos = new Set(
     f.periodoAgenda === 'custom'
@@ -514,7 +557,27 @@ export function calcularPainelUnificado({
     return true;
   });
 
-  // 3) Agregação por Município
+  // 3) Filtragem dos LEADS (agregados anonimizados)
+  const leadsBase = (leads ? leads.grupos : []).filter((g) => {
+    if (temasLeadSet.size && !temasLeadSet.has(g.tema)) return false;
+    if (origensLeadSet.size && !origensLeadSet.has(g.origem)) return false;
+    if (g.norm) {
+      if (!passaTerritorio(g.norm)) return false;
+    } else if (mSet.size || rSet.size || aSet.size) {
+      return false;
+    }
+    if (buscaNorm) {
+      const bate =
+        g.norm.includes(buscaNorm) ||
+        norm(g.tema).includes(buscaNorm) ||
+        norm(g.origem).includes(buscaNorm) ||
+        norm(g.bairro).includes(buscaNorm);
+      if (!bate) return false;
+    }
+    return true;
+  });
+
+  // 4) Agregação por Município
   const emMap = new Map();
   const semMunEmendas = { qtd: 0, total: 0, pago: 0 };
   emendasCruzamento.forEach((e) => {
@@ -568,7 +631,31 @@ export function calcularPainelUnificado({
     }
   });
 
-  // União de todos os municípios do estado
+  const scSet = eleitoral ? new Set(eleitoral.porNorm.keys()) : new Set();
+  const ldMap = new Map();
+  let leadsForaSC = 0;
+  let leadsSemCidade = 0;
+
+  leadsBase.forEach((g) => {
+    if (!g.norm) {
+      leadsSemCidade += g.qtd;
+      return;
+    }
+    if (scSet.size && !scSet.has(g.norm) && g.uf !== 'SC') {
+      leadsForaSC += g.qtd;
+      return;
+    }
+    let m = ldMap.get(g.norm);
+    if (!m) {
+      m = { nome: g.municipio, qtd: 0, temas: new Map(), origens: new Set() };
+      ldMap.set(g.norm, m);
+    }
+    m.qtd += g.qtd;
+    if (g.tema) m.temas.set(g.tema, (m.temas.get(g.tema) || 0) + g.qtd);
+    if (g.origem) m.origens.add(g.origem);
+  });
+
+  // União dos municípios de SC (Votação + Emendas + Agendas)
   const todasChaves = new Set([
     ...(eleitoral ? eleitoral.porNorm.keys() : []),
     ...emMap.keys(),
@@ -583,6 +670,7 @@ export function calcularPainelUnificado({
     f.anosEmenda.length > 0 || f.situacoes.length > 0 || f.modalidades.length > 0 ||
     f.entidades.length > 0 || f.temas.length > 0 || f.uos.length > 0;
   const filtroAgendaEspecifico = clsSet.size > 0;
+  const filtroLeadsEspecifico = temasLeadSet.size > 0 || origensLeadSet.size > 0;
   const filtroEquipe = artSet.size > 0;
 
   const cidadesBase = [];
@@ -593,12 +681,13 @@ export function calcularPainelUnificado({
     const m = eleitoral ? eleitoral.porNorm.get(k) : null;
     const em = emMap.get(k);
     const ag = agMap.get(k);
+    const ld = ldMap.get(k);
 
-    // Quando há filtro de articulador, entidade, tema, classe de agenda ou busca textual, mostra apenas as cidades afetadas
     if (filtroEquipe && !em && !ag) return;
     if (filtroEmendaEspecifico && !em) return;
     if (filtroAgendaEspecifico && !ag) return;
-    if (buscaNorm && !em && !ag && !k.includes(buscaNorm) && !norm(regiaoMap.get(k) || '').includes(buscaNorm)) return;
+    if (filtroLeadsEspecifico && !ld) return;
+    if (buscaNorm && !em && !ag && !ld && !k.includes(buscaNorm) && !norm(regiaoMap.get(k) || '').includes(buscaNorm)) return;
 
     const xb = m && baseKey ? m.v[baseKey] : null;
     const xc = m && compKey ? m.v[compKey] : null;
@@ -614,6 +703,15 @@ export function calcularPainelUnificado({
     const emendasQtd = em ? em.qtd : 0;
     const emendas = em ? em.total : 0;
     const pago = em ? em.pago : 0;
+    const leadsQtd = ld ? ld.qtd : 0;
+
+    let leadsTopTema = '';
+    let topTemaQtd = 0;
+    if (ld && ld.temas.size) {
+      ld.temas.forEach((q, t) => {
+        if (q > topTemaQtd) { topTemaQtd = q; leadsTopTema = t; }
+      });
+    }
 
     const cresceu = delta > 0;
     const acimaMedia = vBase === 0 || crescEstado === null || f.criterio === 'qualquer' || (deltaPct !== null && deltaPct > crescEstado);
@@ -625,6 +723,10 @@ export function calcularPainelUnificado({
     const resAgenda = agendas > 0
       ? (cresceu ? (acimaMedia ? 'visitado_cresceu' : 'visitado_pouco') : 'visitado_caiu')
       : (cresceu ? 'cresceu_sem_visita' : 'sem_visita_sem_cresc');
+
+    const resLeads = leadsQtd > 0
+      ? (cresceu ? (acimaMedia ? 'lead_cresceu' : 'lead_pouco') : 'lead_nao_cresceu')
+      : (cresceu ? 'cresceu_sem_lead' : 'sem_lead_sem_cresc');
 
     const quad4 =
       agendas > 0 && emendas > 0
@@ -641,7 +743,7 @@ export function calcularPainelUnificado({
 
     cidadesBase.push({
       norm: k,
-      nome: (em && em.nome) || (m && tituloMunicipio(m.nome)) || (ag && ag.nome) || tituloMunicipio(k),
+      nome: (em && em.nome) || (m && tituloMunicipio(m.nome)) || (ag && ag.nome) || (ld && ld.nome) || tituloMunicipio(k),
       regiao: regiaoMap.get(k) || '',
       associacao: assocMap.get(k) || '',
       v: m ? m.v : {},
@@ -661,39 +763,50 @@ export function calcularPainelUnificado({
       emendas,
       pago,
       rsPorVoto: vComp > 0 && emendas > 0 ? emendas / vComp : null,
+      leads: leadsQtd,
+      leadsTopTema,
+      votosPorLead: leadsQtd > 0 ? vComp / leadsQtd : null,
       articuladores: [...artsUniao.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')).join(', '),
       resEmenda,
       resAgenda,
+      resLeads,
       quad4,
       indice: 0,
     });
   });
 
-  // Índice combinado (0 a 100) ponderando presença de agenda + emendas
+  // Índice de Atuação Total (0 a 100) combinando Agendas + Emendas + Leads
+  const temBaseLeads = Boolean(leads && leads.grupos && leads.grupos.length > 0);
   const sAg = scoreAtivos(cidadesBase.map((r) => r.agendas));
   const sEm = scoreAtivos(cidadesBase.map((r) => r.emendas));
+  const sLd = scoreAtivos(cidadesBase.map((r) => r.leads));
   cidadesBase.forEach((r, i) => {
-    r.indice = (sAg[i] + sEm[i]) / 2;
+    r.indice = temBaseLeads ? (sAg[i] + sEm[i] + sLd[i]) / 3 : (sAg[i] + sEm[i]) / 2;
   });
 
-  // Contagens dos botões rápidos (calculadas ANTES de aplicar o clique dos próprios botões)
+  // Contagens dos botões rápidos (antes de aplicar o próprio filtro de atalho)
   const contagemEmendas = {};
   Object.keys(RESULTADOS_EMENDAS).forEach((k) => { contagemEmendas[k] = 0; });
   const contagemAgendas = {};
   Object.keys(RESULTADOS_AGENDAS).forEach((k) => { contagemAgendas[k] = 0; });
+  const contagemLeads = {};
+  Object.keys(RESULTADOS_LEADS).forEach((k) => { contagemLeads[k] = 0; });
   const contagemQuadrantes = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
 
   cidadesBase.forEach((r) => {
     contagemEmendas[r.resEmenda] += 1;
     contagemAgendas[r.resAgenda] += 1;
+    contagemLeads[r.resLeads] += 1;
     contagemQuadrantes[r.quad4] += 1;
   });
 
-  // 4) Aplica os atalhos rápidos de resultado (emendas, agendas e quadrante)
-  const temAtalho = f.resEmenda.length > 0 || f.resAgenda.length > 0 || Boolean(f.quadrante4);
+  // 5) Aplica os atalhos rápidos de conversão
+  const temAtalho =
+    f.resEmenda.length > 0 || f.resAgenda.length > 0 || f.resLeads.length > 0 || Boolean(f.quadrante4);
   const cidadesFiltradas = cidadesBase.filter((r) => {
     if (f.resEmenda.length && !f.resEmenda.includes(r.resEmenda)) return false;
     if (f.resAgenda.length && !f.resAgenda.includes(r.resAgenda)) return false;
+    if (f.resLeads.length && !f.resLeads.includes(r.resLeads)) return false;
     if (f.quadrante4 && r.quad4 !== f.quadrante4) return false;
     return true;
   });
@@ -705,8 +818,11 @@ export function calcularPainelUnificado({
   const agendasFiltradas = temAtalho
     ? agendasBase.filter((ev) => ev.norm && chavesVisiveis.has(ev.norm))
     : agendasBase;
+  const leadsFiltrados = temAtalho
+    ? leadsBase.filter((g) => g.norm && chavesVisiveis.has(g.norm))
+    : leadsBase;
 
-  // 5) Calcula a Matriz Bivariada 3x3 sobre as cidades visíveis
+  // 6) Calcula a Matriz Bivariada 3×3 sobre as cidades visíveis
   const modoInfo = MODOS_MAPA.find((m) => m.key === modoMapa) || MODOS_MAPA[0];
   const campoY = modoInfo.campoY || 'agendas';
   const fmtY = modoInfo.fmtY || fmtInt;
@@ -730,7 +846,7 @@ export function calcularPainelUnificado({
     contagemCelulas[r.celId] += 1;
   });
 
-  // 6) Resumo geral e Insights em linguagem natural
+  // 7) Resumo geral e Insights em linguagem natural
   const totalVotosComp = cidadesFiltradas.reduce((s, r) => s + r.vComp, 0);
   const totalVotosBase = cidadesFiltradas.reduce((s, r) => s + r.vBase, 0);
   const totalDeltaVotos = totalVotosComp - totalVotosBase;
@@ -740,11 +856,14 @@ export function calcularPainelUnificado({
   const totalEmendasQtd = cidadesFiltradas.reduce((s, r) => s + r.emendasQtd, 0);
   const totalAgendasQtd = cidadesFiltradas.reduce((s, r) => s + r.agendas, 0);
   const totalHoras = cidadesFiltradas.reduce((s, r) => s + r.horas, 0);
+  const totalLeadsSC = cidadesFiltradas.reduce((s, r) => s + r.leads, 0);
 
   const visitados = cidadesFiltradas.filter((r) => r.agendas > 0);
   const naoVisitados = cidadesFiltradas.filter((r) => r.agendas === 0);
   const comEmenda = cidadesFiltradas.filter((r) => r.emendas > 0);
   const semEmenda = cidadesFiltradas.filter((r) => r.emendas === 0);
+  const comLeads = cidadesFiltradas.filter((r) => r.leads > 0);
+  const semLeads = cidadesFiltradas.filter((r) => r.leads === 0);
   const comAmbos = cidadesFiltradas.filter((r) => r.quad4 === 'Q1');
   const semNenhum = cidadesFiltradas.filter((r) => r.quad4 === 'Q4');
 
@@ -752,6 +871,8 @@ export function calcularPainelUnificado({
   const crescTipicoNaoVisitados = median(naoVisitados.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
   const crescTipicoComEmenda = median(comEmenda.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
   const crescTipicoSemEmenda = median(semEmenda.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
+  const crescTipicoComLeads = median(comLeads.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
+  const crescTipicoSemLeads = median(semLeads.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
   const crescTipicoAmbos = median(comAmbos.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
   const crescTipicoNenhum = median(semNenhum.filter((r) => r.deltaPct !== null).map((r) => r.deltaPct));
 
@@ -761,36 +882,47 @@ export function calcularPainelUnificado({
   const taxaCresceramEmendas = comEmenda.length
     ? (comEmenda.filter((r) => r.delta > 0).length / comEmenda.length) * 100
     : null;
+  const taxaCresceramLeads = comLeads.length
+    ? (comLeads.filter((r) => r.delta > 0).length / comLeads.length) * 100
+    : null;
 
   const rhoAgVotos = spearman(cidadesFiltradas.map((r) => r.agendas), cidadesFiltradas.map((r) => r.vComp));
   const rhoAgDelta = spearman(cidadesFiltradas.map((r) => r.agendas), cidadesFiltradas.map((r) => r.delta));
   const rhoEmVotos = spearman(cidadesFiltradas.map((r) => r.emendas), cidadesFiltradas.map((r) => r.vComp));
   const rhoEmDelta = spearman(cidadesFiltradas.map((r) => r.emendas), cidadesFiltradas.map((r) => r.delta));
+  const rhoLdVotos = spearman(cidadesFiltradas.map((r) => r.leads), cidadesFiltradas.map((r) => r.vComp));
+  const rhoLdDelta = spearman(cidadesFiltradas.map((r) => r.leads), cidadesFiltradas.map((r) => r.delta));
   const rhoCombDelta = spearman(cidadesFiltradas.map((r) => r.indice), cidadesFiltradas.map((r) => r.delta));
 
   const insights = {
     presenca: descreverRelacao(rhoAgDelta, 'visitas do mandato'),
     emendas: descreverRelacao(rhoEmDelta, 'recursos de emendas'),
-    combinado: descreverRelacao(rhoCombDelta, 'visitas somadas às emendas'),
+    leads: descreverRelacao(rhoLdDelta, 'leads cadastrados'),
+    combinado: descreverRelacao(rhoCombDelta, 'visitas, emendas e leads juntos'),
     crescTipicoVisitados,
     crescTipicoNaoVisitados,
     crescTipicoComEmenda,
     crescTipicoSemEmenda,
+    crescTipicoComLeads,
+    crescTipicoSemLeads,
     crescTipicoAmbos,
     crescTipicoNenhum,
     taxaCresceramVisitados,
     taxaCresceramEmendas,
+    taxaCresceramLeads,
     notaTecnica: {
       n: cidadesFiltradas.length,
       rhoAgVotos,
       rhoAgDelta,
       rhoEmVotos,
       rhoEmDelta,
+      rhoLdVotos,
+      rhoLdDelta,
       rhoCombDelta,
     },
   };
 
-  // 7) Resumo por Região de SC
+  // 8) Resumo por Região de SC
   const regAggMap = new Map();
   cidadesFiltradas.forEach((r) => {
     const k = r.regiao || 'Sem região definida';
@@ -803,11 +935,13 @@ export function calcularPainelUnificado({
         munis: 0,
         visitados: 0,
         comEmenda: 0,
+        comLeads: 0,
         agendas: 0,
         horas: 0,
         emendasQtd: 0,
         emendas: 0,
         pago: 0,
+        leads: 0,
         vBase: 0,
         vComp: 0,
         top: null,
@@ -817,11 +951,13 @@ export function calcularPainelUnificado({
     g.munis += 1;
     if (r.agendas > 0) g.visitados += 1;
     if (r.emendas > 0) g.comEmenda += 1;
+    if (r.leads > 0) g.comLeads += 1;
     g.agendas += r.agendas;
     g.horas += r.horas;
     g.emendasQtd += r.emendasQtd;
     g.emendas += r.emendas;
     g.pago += r.pago;
+    g.leads += r.leads;
     g.vBase += r.vBase;
     g.vComp += r.vComp;
     if (!g.top || r.vComp > g.top.vComp) g.top = r;
@@ -833,7 +969,7 @@ export function calcularPainelUnificado({
     share: tC > 0 ? (g.vComp / tC) * 100 : null,
   }));
 
-  // 8) Resumo por Articulador (presença da equipe: agendas + emendas + votos nas cidades onde atua)
+  // 9) Resumo por Articulador
   const artAggMap = new Map();
   const cityByNorm = new Map(cidadesBase.map((r) => [r.norm, r]));
 
@@ -880,12 +1016,13 @@ export function calcularPainelUnificado({
 
   const resumoArticuladores = [...artAggMap.values()]
     .map((a) => {
-      let vBase = 0, vComp = 0, cresceram = 0, comVotos = 0;
+      let vBase = 0, vComp = 0, cresceram = 0, comVotos = 0, leadsNasCidades = 0;
       a.munisSet.forEach((mk) => {
         const c = cityByNorm.get(mk);
         if (!c) return;
         vBase += c.vBase;
         vComp += c.vComp;
+        leadsNasCidades += c.leads;
         if (c.vComp > 0) comVotos += 1;
         if (c.delta > 0) cresceram += 1;
       });
@@ -901,6 +1038,7 @@ export function calcularPainelUnificado({
         emendasQtd: a.emendasQtd,
         emendas: a.emendas,
         pago: a.pago,
+        leads: leadsNasCidades,
         vBase,
         vComp,
         delta,
@@ -909,7 +1047,7 @@ export function calcularPainelUnificado({
     })
     .sort((a, b) => (b.agendas + b.emendasQtd) - (a.agendas + a.emendasQtd));
 
-  // 9) Listas de ação imediata para o Início
+  // 10) Listas de ação imediata
   const destaques = {
     emendaSemVisita: cidadesFiltradas
       .filter((r) => r.quad4 === 'Q2')
@@ -919,8 +1057,16 @@ export function calcularPainelUnificado({
       .filter((r) => r.agendas === 0 && r.vComp > 0)
       .sort((a, b) => b.vComp - a.vComp)
       .slice(0, 8),
+    votosSemLeads: cidadesFiltradas
+      .filter((r) => r.leads === 0 && r.vComp > 0)
+      .sort((a, b) => b.vComp - a.vComp)
+      .slice(0, 8),
+    leadsSemCrescimento: cidadesFiltradas
+      .filter((r) => r.leads > 0 && r.delta <= 0)
+      .sort((a, b) => b.leads - a.leads)
+      .slice(0, 8),
     maioresGanhos: cidadesFiltradas
-      .filter((r) => (r.agendas > 0 || r.emendas > 0) && r.delta > 0)
+      .filter((r) => (r.agendas > 0 || r.emendas > 0 || r.leads > 0) && r.delta > 0)
       .sort((a, b) => b.delta - a.delta)
       .slice(0, 8),
     atencaoQueda: cidadesFiltradas
@@ -929,7 +1075,7 @@ export function calcularPainelUnificado({
       .slice(0, 8),
   };
 
-  // 10) Evolução anual (para gráfico resumido)
+  // 11) Evolução anual das agendas
   const agPorAno = {};
   agendasFiltradas.forEach((ev) => {
     if (!ev.ano) return;
@@ -945,13 +1091,18 @@ export function calcularPainelUnificado({
     elBase,
     elComp,
     crescEstado,
+    temBaseLeads,
     cidadesBase,
     cidadesFiltradas,
     emendasFiltradas,
     agendasFiltradas,
+    leadsFiltrados,
     semMunEmendas,
+    leadsForaSC,
+    leadsSemCidade,
     contagemEmendas,
     contagemAgendas,
+    contagemLeads,
     contagemQuadrantes,
     contagemCelulas,
     faixasY,
@@ -962,6 +1113,7 @@ export function calcularPainelUnificado({
       cidades: cidadesFiltradas.length,
       visitados: visitados.length,
       comEmenda: comEmenda.length,
+      comLeads: comLeads.length,
       comAmbos: comAmbos.length,
       emendaSemVisita: contagemQuadrantes.Q2,
       votosBase: totalVotosBase,
@@ -973,8 +1125,10 @@ export function calcularPainelUnificado({
       emendasPago: totalEmendasPago,
       agendasQtd: totalAgendasQtd,
       horas: totalHoras,
+      leadsTotal: totalLeadsSC,
       coberturaVotosVisita: totalVotosComp > 0 ? (visitados.reduce((s, r) => s + r.vComp, 0) / totalVotosComp) * 100 : null,
       coberturaVotosEmenda: totalVotosComp > 0 ? (comEmenda.reduce((s, r) => s + r.vComp, 0) / totalVotosComp) * 100 : null,
+      coberturaVotosLeads: totalVotosComp > 0 ? (comLeads.reduce((s, r) => s + r.vComp, 0) / totalVotosComp) * 100 : null,
     },
     insights,
     resumoRegioes,
